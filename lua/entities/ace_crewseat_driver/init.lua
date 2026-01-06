@@ -5,7 +5,7 @@ include("shared.lua")
 
 local round, ceil = math.Round, math.ceil
 
-local EntityTable = ACF.Weapons.Entities
+local CrewseatTable = ACF.Weapons.Crewseats
 
 function ENT:Initialize()
 	ACE_InitializeCrewseat(self, self.ModelType)
@@ -29,7 +29,7 @@ function MakeACE_Crewseat_Driver(Owner, Pos, Angle, Id, EntityData)
 
 	Id = Id or "Crewseat_Driver"
 
-	local entData = EntityTable[Id]
+	local entData = CrewseatTable and CrewseatTable[Id]
 	if not entData then return false end
 
 	local ent = ents.Create("ace_crewseat_driver")

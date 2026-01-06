@@ -3,13 +3,13 @@ AddCSLuaFile("shared.lua")
 
 include("shared.lua")
 
+CreateConVar("sbox_max_ace_wind_sensor", 10)
+
 DEFINE_BASECLASS("base_wire_entity")
 
-local EntityTable = ACF.Weapons.Entities
+local ExtrasTable = ACF.Weapons.Extras
 
 function ENT:Initialize()
-	self.BaseClass.Initialize(self)
-	
 	self.ThinkDelay = 0.1
 
 	self.Inputs = WireLib.CreateInputs(self, {})
@@ -24,12 +24,12 @@ function ENT:Initialize()
 	self:UpdateOverlayText()
 end
 
-function MakeACE_Wind_Sensor(Owner, Pos, Angle, Id)
+function MakeACE_Wind_Sensor(Owner, Pos, Angle, Id, EntityData)
 	if not Owner:CheckLimit("_ace_wind_sensor") then return false end
 
 	Id = Id or "WindSensor"
 
-	local entData = EntityTable[Id]
+	local entData = ExtrasTable[Id]
 	if not entData then return false end
 
 	local Sensor = ents.Create("ace_wind_sensor")
@@ -60,7 +60,7 @@ function MakeACE_Wind_Sensor(Owner, Pos, Angle, Id)
 end
 
 list.Set("ACFCvars", "ace_wind_sensor", {"id", "entitydata"})
-duplicator.RegisterEntityClass("ace_wind_sensor", MakeACE_Wind_Sensor, "Pos", "Angle", "Id")
+duplicator.RegisterEntityClass("ace_wind_sensor", MakeACE_Wind_Sensor, "Pos", "Angle", "Id", "Data")
 
 function ENT:SetNWNetwork()
 	self:SetNWString("WireName", self.ACFName)

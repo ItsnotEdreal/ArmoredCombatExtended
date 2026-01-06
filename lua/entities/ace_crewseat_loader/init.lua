@@ -6,7 +6,7 @@ include("shared.lua")
 local round, ceil = math.Round, math.ceil
 local clamp = math.Clamp
 
-local EntityTable = ACF.Weapons.Entities
+local CrewseatTable = ACF.Weapons.Crewseats
 
 function ENT:Initialize()
 	ACE_InitializeCrewseat(self, self.ModelType)
@@ -32,7 +32,7 @@ function MakeACE_Crewseat_Loader(Owner, Pos, Angle, Id, EntityData)
 
 	Id = Id or "Crewseat_Loader"
 
-	local entData = EntityTable[Id]
+	local entData = CrewseatTable and CrewseatTable[Id]
 	if not entData then return false end
 
 	local ent = ents.Create("ace_crewseat_loader")
@@ -125,7 +125,7 @@ function ENT:Think()
 	if self.Legal then
 		self:IncreaseStamina()
 	end
-
+	
 	local gun = self.LinkedGun
 	if not self.Legal and IsValid(gun) then
 		gun:Unlink(self)

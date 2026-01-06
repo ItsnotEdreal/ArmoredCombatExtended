@@ -3,17 +3,19 @@ AddCSLuaFile("shared.lua")
 
 include("shared.lua")
 
+CreateConVar("sbox_max_ace_gforce_meter", 10)
+
 DEFINE_BASECLASS("base_wire_entity")
 
-local EntityTable = ACF.Weapons.Entities
+local ExtrasTable = ACF.Weapons.Extras
 
 function ENT:Initialize()
-	self.ThinkDelay = 0.02
-	self.CurrentGForce = 0
-	self.SmoothedGForce = 0
-	self.GForceVector = Vector(0, 0, 0)
-	self.LastVelocity = Vector(0, 0, 0)
-	self.LastThinkTime = CurTime()
+	self.ThinkDelay = 0.05
+	self.CurrentGForce = 1
+	self.GForceVector = Vector(0, 0, 1)
+	self.LastGForcePos = self:GetPos()
+	self.LastGForceVel = Vector(0, 0, 0)
+	self.LastGForceTime = CurTime()
 
 	self.Inputs = WireLib.CreateInputs(self, {})
 
@@ -34,7 +36,7 @@ function MakeACE_GForce_Meter(Owner, Pos, Angle, Id, EntityData)
 
 	Id = Id or "GForceMeter"
 
-	local entData = EntityTable[Id]
+	local entData = ExtrasTable[Id]
 	if not entData then return false end
 
 	local ent = ents.Create("ace_gforce_meter")
@@ -86,41 +88,25 @@ end
 
 function ENT:CalculateGForce()
 	local curTime = CurTime()
-	local deltaTime = curTime - self.LastThinkTime
+	local deltaTime = curTime - self.LastGForceTime
 
-	if deltaTime <= 0 then return end
+	if deltaTime <= 0.01 then return end
 
-	-- Try to use CFW contraption velocity first
-	local curVel
-	local contraption = self:GetContraption()
+	local curPos = self:GetPos()
+	local lastPos = self.LastGForcePos
 
-	if contraption then
-		local baseplate = contraption:GetACEBaseplate()
-		if IsValid(baseplate) then
-			local phys = baseplate:GetPhysicsObject()
-			if IsValid(phys) then
-				curVel = phys:GetVelocity()
-			end
-		end
-	end
+	-- Calculate velocity from position delta (works with parented entities)
+	local curVel = (curPos - lastPos) / deltaTime
+	local lastVel = self.LastGForceVel
 
-	-- Fallback to own physics if not in contraption
-	if not curVel then
-		local phys = self:GetPhysicsObject()
-		if IsValid(phys) then
-			curVel = phys:GetVelocity()
-		else
-			return
-		end
-	end
-
-	local deltaVel = curVel - self.LastVelocity
+	-- Calculate acceleration
+	local deltaVel = curVel - lastVel
 	local worldAccel = deltaVel / deltaTime
 
-	-- Convert to local space acceleration
+	-- Convert to local space
 	local localAccel = self:WorldToLocal(self:GetPos() + worldAccel) - self:WorldToLocal(self:GetPos())
 
-	-- Add gravity compensation on Z axis
+	-- Add gravity compensation on Z axis (we feel 1G upward when stationary)
 	localAccel.z = localAccel.z + 386.22
 
 	-- Convert to G-force (386.22 in/s² = 1G in Source units)
@@ -128,21 +114,23 @@ function ENT:CalculateGForce()
 
 	local gforce = self.GForceVector:Length()
 
-	-- Faster smoothing - reaches target quicker
-	local smoothFactor = 0.6
-	self.SmoothedGForce = self.SmoothedGForce + (gforce - self.SmoothedGForce) * smoothFactor
+	-- Smooth the value
+	local smoothFactor = 0.5
+	self.CurrentGForce = self.CurrentGForce + (gforce - self.CurrentGForce) * smoothFactor
 
-	-- Snap to 1.0 when very close and stable (stationary)
-	if math.abs(self.SmoothedGForce - 1) < 0.05 and curVel:Length() < 10 then
-		self.SmoothedGForce = 1
+	-- Snap to 1G when nearly stationary
+	if math.abs(self.CurrentGForce - 1) < 0.08 and curVel:Length() < 20 then
+		self.CurrentGForce = 1
+		self.GForceVector = Vector(0, 0, 1)
 	end
 
-	self.LastVelocity = curVel
-	self.LastThinkTime = curTime
+	self.LastGForceTime = curTime
+	self.LastGForcePos = curPos
+	self.LastGForceVel = curVel
 end
 
 function ENT:UpdateOutputs()
-	WireLib.TriggerOutput(self, "GForce", self.SmoothedGForce)
+	WireLib.TriggerOutput(self, "GForce", self.CurrentGForce)
 	WireLib.TriggerOutput(self, "GForceVec", self.GForceVector)
 	WireLib.TriggerOutput(self, "GForceX", self.GForceVector.x)
 	WireLib.TriggerOutput(self, "GForceY", self.GForceVector.y)
@@ -150,7 +138,7 @@ function ENT:UpdateOutputs()
 end
 
 function ENT:UpdateOverlayText()
-	local gforce = math.Round(self.SmoothedGForce, 2)
+	local gforce = math.Round(self.CurrentGForce, 2)
 	local vertical = math.Round(self.GForceVector.z, 2)
 	local lateral = math.Round(math.sqrt(self.GForceVector.x^2 + self.GForceVector.y^2), 2)
 
@@ -159,7 +147,6 @@ function ENT:UpdateOverlayText()
 	txt = txt .. "\nVertical: " .. vertical .. " G"
 	txt = txt .. "\nLateral: " .. lateral .. " G"
 
-	-- Warning indicators
 	if gforce > 6 then
 		txt = txt .. "\n\n[!] EXTREME G-FORCE"
 	elseif gforce > 4 then

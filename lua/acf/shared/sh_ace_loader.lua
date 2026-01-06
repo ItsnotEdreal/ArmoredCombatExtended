@@ -11,7 +11,7 @@ local RadarClasses      = {}
 local GunTable          = {}
 local RackTable         = {}
 local Radars            = {}
-local Tools			    =  {}
+local Tools             = {}
 
 local AmmoTable         = {}
 local LegacyAmmoTable   = {}
@@ -20,10 +20,11 @@ local EngineTable       = {}
 local GearboxTable      = {}
 local FuelTankTable     = {}
 local FuelTankSizeTable = {}
-local MuzzleFlashTable 	= {}
+local MuzzleFlashTable  = {}
 
 local MobilityTable     = {}
-local Entities          = {}
+local Crewseats         = {}
+local Extras            = {}
 
 local GSoundData        = {}
 local ModelData         = {}
@@ -77,8 +78,12 @@ local vheat_source_base = {
 	type   = "Tools"
 }
 
-local entity_base = {
-	type   = "Entities"
+local crewseat_base = {
+	type   = "Crewseats"
+}
+
+local extras_base = {
+	type   = "Extras"
 }
 
 -- add gui stuff to base classes if this is client
@@ -110,8 +115,11 @@ if CLIENT then
 	vheat_source_base.guicreate  = function( _, Table ) ACEVHeatSourceGUICreate( Table )	end or nil
 	vheat_source_base.guiupdate  = function() return end
 
-	entity_base.guicreate    = function( _, Table ) ACEEntityGUICreate( Table ) end or nil
-	entity_base.guiupdate    = function() return end
+	crewseat_base.guicreate  = function( _, Table ) ACECrewseatGUICreate( Table ) end or nil
+	crewseat_base.guiupdate  = function() return end
+
+	extras_base.guicreate    = function( _, Table ) ACEExtrasGUICreate( Table ) end or nil
+	extras_base.guiupdate    = function() return end
 end
 
 -- some factory functions for defining ents
@@ -125,10 +133,18 @@ function ACF_defineGunClass( id, data )
 	end
 end
 
-function ACF_DefineEntity( id, data )
+-- Crewseat definition
+function ACE_DefineCrewseat( id, data )
 	data.id = id
-	table.Inherit( data, entity_base )
-	Entities[ id ] = data
+	table.Inherit( data, crewseat_base )
+	Crewseats[ id ] = data
+end
+
+-- Extras definition (wind sensor, gforce meter, etc.)
+function ACE_DefineExtras( id, data )
+	data.id = id
+	table.Inherit( data, extras_base )
+	Extras[ id ] = data
 end
 
 -- Gun definition
@@ -356,7 +372,8 @@ do
 		"fuses",
 		"sounds",
 		"tools",
-		"entities"
+		"crewseats",
+		"extras"
 	}
 
 	for _, folder in ipairs(folders) do
@@ -387,7 +404,8 @@ ACF.Weapons.FuelTanks       = FuelTankTable
 ACF.Weapons.FuelTanksSize   = FuelTankSizeTable
 ACF.Weapons.Radars          = Radars
 ACF.Weapons.Tools           = Tools
-ACF.Weapons.Entities    = Entities
+ACF.Weapons.Crewseats       = Crewseats
+ACF.Weapons.Extras          = Extras
 ACE.MuzzleFlashes           = MuzzleFlashTable
 
 --Small reminder of Mobility table. Still being used in stuff like starfall/e2. This can change
