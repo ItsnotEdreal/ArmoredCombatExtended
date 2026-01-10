@@ -21,7 +21,7 @@ SWEP.Primary.BulletCount = 10 --Number of bullets to fire each shot, used for sh
 
 SWEP.ReloadSound = "Weapon_Pistol.Reload" --Sound other players hear when you reload - this is NOT your first-person sound
 										--Most models have a built-in first-person reload sound
-SWEP.ReticuleSize = 45
+SWEP.ReticuleSize = 10
 SWEP.ZoomFOV = 60
 SWEP.HasScope = false --True if the weapon has a sniper-style scope
 

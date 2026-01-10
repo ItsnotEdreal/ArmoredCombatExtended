@@ -24,7 +24,7 @@ SWEP.ReloadSound = "Weapon_Pistol.Reload" --Sound other players hear when you re
 
 SWEP.ZoomFOV = 50
 SWEP.HasScope = false --True if the weapon has a sniper-style scope
-
+SWEP.ReticuleSize = 10
 
 --Recoil (crosshair movement) settings--
 --"Heat" is a number that represents how long you've been firing, affecting how quickly your crosshair moves upwards
