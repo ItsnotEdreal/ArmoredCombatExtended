@@ -31,7 +31,7 @@ function ENT:Initialize()
 	self:UpdateOverlayText()
 end
 
-function MakeACE_GForce_Meter(Owner, Pos, Angle, Id, EntityData)
+function MakeACE_GForce_Meter(Owner, Pos, Angle, Id, _EntityData)
 	if not Owner:CheckLimit("_ace_gforce_meter") then return false end
 
 	Id = Id or "GForceMeter"
