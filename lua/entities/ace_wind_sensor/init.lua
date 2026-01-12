@@ -24,7 +24,7 @@ function ENT:Initialize()
 	self:UpdateOverlayText()
 end
 
-function MakeACE_Wind_Sensor(Owner, Pos, Angle, Id, _EntityData)
+function MakeACE_Wind_Sensor(Owner, Pos, Angle, Id)
 	if not Owner:CheckLimit("_ace_wind_sensor") then return false end
 
 	Id = Id or "WindSensor"
