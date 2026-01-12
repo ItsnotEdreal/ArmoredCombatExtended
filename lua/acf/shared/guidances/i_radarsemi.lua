@@ -243,7 +243,7 @@ function this:AcquireLock(missile)
 
 		--print(absang.p)
 		--print(absang.y)
-		local SeekExpanded = self.SeekCone*SeekMul --Expanded Seeker Angle used for searching without a target.
+		local SeekExpanded = self.SeekCone * SeekMul --Expanded Seeker Angle used for searching without a target.
 		if absang.p < SeekExpanded and absang.y < SeekExpanded then --Entity is within missile cone
 
 			debugoverlay.Sphere(entpos, 100, 5, Color(255,100,0,255))
