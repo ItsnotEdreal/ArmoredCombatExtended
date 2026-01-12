@@ -3,113 +3,109 @@ AddCSLuaFile("shared.lua")
 
 include("shared.lua")
 
-local acos, deg, remap, clamp = math.acos, math.deg, math.Remap, math.Clamp
-local round, ceil, random = math.Round, math.ceil, math.random
+local round, ceil = math.Round, math.ceil
 
-function ENT:SpawnFunction( _, trace )
+local CrewseatTable = ACF.Weapons.Crewseats
 
-	if not trace.Hit then return end
+function ENT:Initialize()
+	ACE_InitializeCrewseat(self, self.ModelType)
 
-	local SPos = (trace.HitPos + Vector(0,0,1))
+	self.LinkedEngine = nil
+	self.ACEPoints = 1
 
-	local ent = ents.Create( "ace_crewseat_driver" )
-	ent:SetPos( SPos )
+	self.Inputs = WireLib.CreateInputs(self, {})
+
+	self.Outputs = WireLib.CreateOutputs(self, {
+		"Health (Current health percentage)",
+		"IsLinked (1 if linked to an engine)",
+		"Name (Crew member name) [STRING]",
+	})
+
+	self:UpdateWireOutputs()
+end
+
+function MakeACE_Crewseat_Driver(Owner, Pos, Angle, Id, EntityData)
+	if not Owner:CheckLimit("_ace_crewseat") then return false end
+
+	Id = Id or "Crewseat_Driver"
+
+	local entData = CrewseatTable and CrewseatTable[Id]
+	if not entData then return false end
+
+	local ent = ents.Create("ace_crewseat_driver")
+	if not IsValid(ent) then return false end
+
+	ent:SetAngles(Angle)
+	ent:SetPos(Pos)
+
+	local modelType = EntityData
+	if not modelType or modelType == "" then
+		modelType = entData.defaultModel or "Sitting"
+	end
+	ent.ModelType = modelType
+
 	ent:Spawn()
-	ent:Activate()
+	ent:CPPISetOwner(Owner)
+
+	ent.Id = Id
+
+	Owner:AddCount("_ace_crewseat", ent)
+	Owner:AddCleanup("acfmenu", ent)
 
 	return ent
 end
 
-function ENT:Initialize()
+list.Set("ACFCvars", "ace_crewseat_driver", {"id", "entitydata"})
+duplicator.RegisterEntityClass("ace_crewseat_driver", MakeACE_Crewseat_Driver, "Pos", "Angle", "Id", "Data")
 
-	if self:GetModel() == "models/vehicles/pilot_seat.mdl" then
-		self:SetPos(self:LocalToWorld(Vector(0, 15.3, -14)))
-	end
-	self:SetModel( "models/chairs_playerstart/sitpose.mdl" )
-	self:SetMoveType(MOVETYPE_VPHYSICS);
-	self:PhysicsInit(SOLID_VPHYSICS);
-	self:SetUseType(SIMPLE_USE);
-	self:SetSolid(SOLID_VPHYSICS);
-	self:GetPhysicsObject():SetMass(60)
-
-	self.Master = {}
-	self.ACF = {}
-	self.ACF.Health = 1
-	self.ACF.MaxHealth = 1
-	self.Name = "Crew Seat"
-	self.Weight = 60
-	self.AnglePenalty = 0
-	self.LinkedEngine = nil
-	self.Sound = "npc/combine_soldier/die" .. tostring(random(1, 3)) .. ".wav"
-	self.SoundPitch = 100
-
-	--if not IsValid(self:CPPIGetOwner()) then
-	--	self:CPPISetOwner(game.GetWorld())
-	--end
-
-	self.NextLegalCheck	= ACF.CurTime + random(ACF.Legal.Min, ACF.Legal.Max) -- give any spawning issues time to iron themselves out
-	self.Legal = true
-	self.LegalIssues = ""
-	self.ACEPoints = 1
-
-	self.SpecialHealth	= false  --If true needs a special ACF_Activate function
-	self.SpecialDamage	= true  --If true needs a special ACF_OnDamage function
-
-	local rareNames = {"Mr.Marty", "RDC", "Cheezus", "KemGus", "Golem Man", "Arend", "Mac", "Firstgamerable", "kerbal cadet", "Psycho Dog", "Ferv", "Rice", "spEAM"}
-
-	local randomNum = random(1, 100)
-
-	if randomNum <= 2 then
-		self.Name  = rareNames[random(1, #rareNames)]
-	else
-		local randomPrefixes = {"John", "Bob", "Sam", "Joe", "Ben", "Alex", "Chris", "David", "Eric", "Frank", "Antonio", "Ivan", "Alexander", "Victor", "Elon", "Vladimir"}
-		local randomSuffixes = {"Smith", "Johnson", "Dover", "Wang", "Kim", "Lee", "Brown", "Davis", "Evans", "Garcia", "", "Russel", "King", "Musk", "Popov"}
-
-		local randomPrefix = randomPrefixes[random(1, #randomPrefixes)]
-		local randomSuffix = randomSuffixes[random(1, #randomSuffixes)]
-
-		self.Name  = randomPrefix .. " " .. randomSuffix
-	end
+function ENT:GetPoseModifiers()
+	return ACE_GetPoseModifiers(self) or { gforce = 1, tilt = 1 }
 end
 
-
-local startPenalty = 45
-local maxPenalty = 90
-
 function ENT:Think()
-	local curSeatAngle = deg(acos(self:GetUp():Dot(Vector(0, 0, 1))))
-	self.AnglePenalty = clamp(remap(curSeatAngle, startPenalty, maxPenalty, 0, 1), 0, 1)
-
-	if ACF.CurTime > self.NextLegalCheck then
-
-		self.Legal, self.LegalIssues = ACF_CheckLegal(self, self.Model, round(self.Weight, 2), nil, true, true)
-		self.NextLegalCheck = ACF.Legal.NextCheck(self.legal)
-
-	end
+	ACE_UpdateCrewseatAnglePenalty(self)
+	ACE_CrewseatLegalCheck(self)
 
 	local eng = self.LinkedEngine
 	if not self.Legal and IsValid(eng) then
 		eng:Unlink(self)
 	end
 
+	self:UpdateWireOutputs()
 	self:UpdateOverlayText()
 end
 
-
 function ENT:OnRemove()
+	ACE_CrewseatOnRemove(self)
+end
 
-	for Key in pairs(self.Master) do
-		if self.Master[Key] and self.Master[Key]:IsValid() then
-			self.Master[Key]:Unlink( self )
-		end
-	end
+function ENT:UpdateWireOutputs()
+	local hp = round(self.ACF.Health / self.ACF.MaxHealth * 100)
+	local isLinked = IsValid(self.LinkedEngine) and 1 or 0
 
+	WireLib.TriggerOutput(self, "Health", hp)
+	WireLib.TriggerOutput(self, "IsLinked", isLinked)
+	WireLib.TriggerOutput(self, "Name", self.Name or "Unknown")
 end
 
 function ENT:UpdateOverlayText()
 	local hp = round(self.ACF.Health / self.ACF.MaxHealth * 100)
+	local pose = self:GetPoseModifiers()
+	local isStanding = ACE_IsStandingPose(self.ModelType)
 
-	local str = string.format("Health: %s%%\nName: %s", hp, self.Name)
+	local str = self.Name
+	str = str .. "\n\nHealth: " .. hp .. "%"
+	str = str .. "\nPose: " .. (isStanding and "Standing" or "Sitting")
+
+	if pose.desc then
+		str = str .. "\n  " .. pose.desc
+	end
+
+	-- Only show tilt penalty if significant
+	local tiltPenalty = (self.AnglePenalty or 0) * (pose.tilt or 1)
+	if tiltPenalty > 0.1 then
+		str = str .. "\n\nTilt Penalty: " .. round(tiltPenalty * 100) .. "%"
+	end
 
 	if not self.Legal then
 		str = str .. "\n\nNot legal, disabled for " .. ceil(self.NextLegalCheck - ACF.CurTime) .. "s\nIssues: " .. self.LegalIssues
@@ -118,26 +114,15 @@ function ENT:UpdateOverlayText()
 	self:SetOverlayText(str)
 end
 
-
-function ENT:ACF_OnDamage( Entity, Energy, FrArea, _, Inflictor, _, _ )	--This function needs to return HitRes
-	self.ACF.Armour = 3
-	local HitRes	= ACF_PropDamage( Entity, Energy , FrArea, 0, Inflictor ) --Calling the standard damage prop function. Angle of incidence set to 0 for more consistent damage.
-
-	--print(math.Round(HitRes.Damage * 100))
-	--print(HitRes.Loss * 100)
-
-	--print(HitRes.Overkill)
+function ENT:ACF_OnDamage(Entity, Energy, FrArea, _, Inflictor, _, _)
+	local HitRes = ACE_CrewseatDamage(self, Entity, Energy, FrArea, Inflictor)
 
 	if HitRes.Kill or HitRes.Overkill > 1 then
-
 		self:ConsumeCrewseats()
-
 		return { Damage = 0, Overkill = 0, Loss = 0, Kill = false }
-
 	end
 
-	return HitRes --This function needs to return HitRes
-
+	return HitRes
 end
 
 function ENT:ConsumeCrewseats()
