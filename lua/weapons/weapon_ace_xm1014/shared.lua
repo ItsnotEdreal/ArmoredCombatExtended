@@ -21,7 +21,7 @@ SWEP.Primary.BulletCount = 10 --Number of bullets to fire each shot, used for sh
 
 SWEP.ReloadSound = "Weapon_Pistol.Reload" --Sound other players hear when you reload - this is NOT your first-person sound
 										--Most models have a built-in first-person reload sound
-SWEP.ReticuleSize = 45
+SWEP.ReticuleSize = 10
 SWEP.ZoomFOV = 60
 SWEP.HasScope = false --True if the weapon has a sniper-style scope
 
@@ -69,9 +69,9 @@ function SWEP:InitBulletData()
 	self.BulletData.Id = "7.62mmMG"
 	self.BulletData.Type = "AP"
 	self.BulletData.Id = 1
-	self.BulletData.Caliber = 1.2
-	self.BulletData.PropLength = 2.5 --Volume of the case as a cylinder * Powder density converted from g to kg
-	self.BulletData.ProjLength = 3.5 --Volume of the projectile as a cylinder * streamline factor (Data5) * density of steel
+	self.BulletData.Caliber = 0.5
+	self.BulletData.PropLength = 3.5 --Volume of the case as a cylinder * Powder density converted from g to kg
+	self.BulletData.ProjLength = 4.5 --Volume of the projectile as a cylinder * streamline factor (Data5) * density of steel
 	self.BulletData.Data5 = 0 --He Filler or Flechette count
 	self.BulletData.Data6 = 0 --HEAT ConeAng or Flechette Spread
 	self.BulletData.Data7 = 0

@@ -24,7 +24,7 @@ SWEP.ReloadSound = "Weapon_Pistol.Reload" --Sound other players hear when you re
 
 SWEP.ZoomFOV = 50
 SWEP.HasScope = false --True if the weapon has a sniper-style scope
-
+SWEP.ReticuleSize = 10
 
 --Recoil (crosshair movement) settings--
 --"Heat" is a number that represents how long you've been firing, affecting how quickly your crosshair moves upwards
@@ -71,7 +71,7 @@ function SWEP:InitBulletData()
 	self.BulletData.Id = "7.62mmMG"
 	self.BulletData.Type = "AP"
 	self.BulletData.Id = 1
-	self.BulletData.Caliber = 1.2
+	self.BulletData.Caliber = 0.725
 	self.BulletData.PropLength = 2.6 --Volume of the case as a cylinder * Powder density converted from g to kg
 	self.BulletData.ProjLength = 3.5 --Volume of the projectile as a cylinder * streamline factor (Data5) * density of steel
 	self.BulletData.Data5 = 0 --He Filler or Flechette count
@@ -90,8 +90,8 @@ function SWEP:InitBulletData()
 	self.BulletData.ProjMass = self.BulletData.FrArea * (self.BulletData.ProjLength * 7.9 / 1000)
 	self.BulletData.PropMass = self.BulletData.FrArea * (self.BulletData.PropLength * ACF.PDensity / 1000) --Volume of the case as a cylinder * Powder density converted from g to kg
 	--		self.BulletData.DragCoef  = 0 --Alternatively manually set it
-	--		self.BulletData.DragCoef  = ((self.BulletData.FrArea/10000)/self.BulletData.ProjMass)
-	self.BulletData.DragCoef = 0.0075 --Alternatively manually set it
+	self.BulletData.DragCoef  = ((self.BulletData.FrArea / 10000) / self.BulletData.ProjMass)
+	--self.BulletData.DragCoef = 0.0075 --Alternatively manually set it
 	--Don't touch below here
 	self.BulletData.MuzzleVel = ACF_MuzzleVelocity(self.BulletData.PropMass, self.BulletData.ProjMass, self.BulletData.Caliber)
 	self.BulletData.ShovePower = 0.2

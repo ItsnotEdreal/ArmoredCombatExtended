@@ -1,66 +1,156 @@
-# Armored Combat Framework Extended
-[![Discord Invite](https://img.shields.io/discord/580463055595503646?label=Discord&style=flat-square)](https://discord.gg/Y8aEYU6)
-[![Linting Status](https://img.shields.io/github/actions/workflow/status/ACE-Project-Team/ArmoredCombatExtended/glualint.yml?branch=master&label=Linter%20Status&style=flat-square)](https://github.com/ACE-Project-Team/ArmoredCombatExtended/actions?query=workflow%3AGLuaFixer)
-[![Repository Size](https://img.shields.io/github/repo-size/ACE-Project-Team/ArmoredCombatExtended?label=Repository%20Size&style=flat-square)](https://github.com/ACE-Project-Team/ArmoredCombatExtended)
-[![Commit Activity](https://img.shields.io/github/commit-activity/m/ACE-Project-Team/ArmoredCombatExtended?label=Commit%20Activity&style=flat-square)](https://github.com/ACE-Project-Team/ArmoredCombatExtended/graphs/commit-activity)
+# ACE - Armored Combat Extended
 
-Welcome to Armored Combat Framework Extended (ACE), your gateway to a world of realistic building experience in your favorite game. ACE is more than just an addon; it's a journey into creating incredible machines, vehicles, and contraptions. Whether you're dreaming of armored tanks, high-speed cars, futuristic aircraft, or complex mechanisms, ACE empowers your creativity. All you need is a dash of Wiremod knowledge, and you're ready to conquer new frontiers.
+[![Website](https://img.shields.io/badge/Website-acegmod.com-E02020?style=flat-square)](https://acegmod.com)
+[![Documentation](https://img.shields.io/badge/Docs-Wiki-blue?style=flat-square)](https://acegmod.com/wiki)
+[![Discord](https://img.shields.io/discord/580463055595503646?label=Discord&style=flat-square&logo=discord)](https://discord.gg/Y8aEYU6)
+[![Steam Workshop](https://img.shields.io/badge/Steam-Workshop-black?style=flat-square&logo=steam)](https://steamcommunity.com/sharedfiles/filedetails/?id=3282568819)
+[![Linting](https://img.shields.io/github/actions/workflow/status/ACE-Project-Team/ArmoredCombatExtended/glualint.yml?branch=master&label=Linting&style=flat-square)](https://github.com/ACE-Project-Team/ArmoredCombatExtended/actions)
+[![Commits](https://img.shields.io/github/commit-activity/m/ACE-Project-Team/ArmoredCombatExtended?label=Commits&style=flat-square)](https://github.com/ACE-Project-Team/ArmoredCombatExtended/graphs/commit-activity)
 
-## What Makes ACE Stand Out
+**ACE (Armored Combat Extended)** is a comprehensive engineering framework for Garry's Mod that replaces legacy building tools with realistic physics simulation and authentic components. From engines and drivetrains to advanced sensors and weaponry, ACE challenges you to solve real engineering problems. Whether you're new to advanced building or a veteran seeking depth, ACE rewards skill and creativity with systems that actually behave like their real-world counterparts. Actively developed since 2018, est. in 2015.
 
-ACE is not just another addon; it's a game-changer for your building process. Here's why it's a must-have for your Garry's Mod experience:
+🌐 **[Visit acegmod.com](https://acegmod.com)** for documentation, tutorials, community content, and more.
 
-- **Guns and Weapons**: ACE provides a large arsenal of weaponry, including various types of cannons, missiles, and bombs, giving you a spacious choice for your contraption's needs
+---
 
-- **Realistic Mobility System**: Experience the realistic mobility, allowing you to create vehicles that handle just like the real thing without any of the old-fashioned legacy tools(thrusters, wheel tool, hoverballs etc.).
+## Why ACE?
 
-- **Diverse Ammo Types**: ACE offers various unique ammo types, adding depth and strategy to your combat scenarios, such as AP, APHE, APFSDS, HEAT, Smoke rounds etc.
+ACE is a **direct successor to ACF-2** (the original Armored Combat Framework), continuing its legacy with modern features and active development. When ACF-2 development slowed, ACE was created to push the framework forward — adding new systems, fixing long-standing issues, and expanding what's possible in Garry's Mod engineering.
 
-- **SWEPs**: It's always nice to shoot some NPCs down or maybe even enemy's tank?
+Decade later, ACE remains the most feature-complete combat and engineering addon available:
 
-- **Realistic Damage and Armor**: ACE's damage system adds a layer of realism, making combat and destruction more immersive than ever. We have a proper prop damage as well as prop penetration system, that often leads to spalling that damages the internals of the contraption.
+| Feature | Description |
+|---------|-------------|
+| **Realistic Ballistics** | Accurate projectile physics with penetration, ricochet, and spalling |
+| **Advanced Mobility** | Realistic vehicle handling — no thrusters or hoverballs needed |
+| **Comprehensive Arsenal** | Cannons, missiles, bombs, and 10+ ammunition types (AP, APHE, HEAT, APFSDS, etc.) |
+| **Damage Modeling** | Component-based damage with armor penetration and internal spalling |
+| **Sensor Systems** | Multiple radar types, each with unique capabilities |
+| **Immersive Audio/Visual** | Dynamic sound (including speed of sound simulation) and stunning visual effects |
+| **Wiremod Integration** | Full compatibility with Expression 2 and Wiremod systems |
 
-- **Fire the Missiles!**: Launch missiles with ease, adding an exciting dimension to your gameplay. We have over 5 types of missiles with over 10 missile models.
+---
 
-- **Sensors**: ACE incorporates various sensors with intricate details, giving you more capabilities to stand out. ACE provides 3 types of radars, each has its own purpose and its details
+## Quick Links
 
-- **VFX & Sound Ambience**: ACE is filled up with beautiful effects, dynamic lighting for explosions, flares, missile motors, and more. ACE brings dynamic sounds that take many factors into account, such as the speed of sound, delivering one of the most advanced and soul-thrilling sound ambiance systems in the Garry's Mod.
+| Resource | Link |
+|----------|------|
+| 🌐 **Website** | [acegmod.com](https://acegmod.com) |
+| 📖 **Documentation** | [acegmod.com/wiki](https://acegmod.com/wiki) |
+| 📰 **Blog & Updates** | [acegmod.com/blog](https://acegmod.com/blog) |
+| 💬 **Discord** | [discord.gg/Y8aEYU6](https://discord.gg/Y8aEYU6) |
+| 🎬 **Videos** | [YouTube](https://www.youtube.com/@ArmoredCombatExtended) |
+| 🎮 **Steam Workshop** | [Workshop Page](https://steamcommunity.com/sharedfiles/filedetails/?id=3282568819) |
 
-- **Balanced gameplay**: While ACE trying to be realistic it is also trying to make sure that the gameplay is going to be fair and fun.
+---
 
-- **Optimization and Future-Proofing**: We're committed to optimizing ACE and ensuring it stays up for a long time, so you can enjoy your creations for years to come. Although, sometimes some crucial required changes happen, we'll make sure to warn you about it.
+## Installation
 
-- **Open to community**: We're constantly listening to your feedback, participating in various discussions and making sure that all the hotifixes are coming out rapidly, that's why we keep in touch with server owners. Yet we also help active community members to release extensions to ACE.
+### Requirements
 
-- **And Much More...**: ACE keeps evolving and has been evolving over 5 years. It has become its own open-source project with its own history. And stay in tune, so you'll find numerous other features and updates to explore.
+ACE requires the following addons:
 
+| Addon | Required | Link |
+|-------|----------|------|
+| **Wiremod** | ✅ Yes | [Workshop](https://steamcommunity.com/workshop/filedetails/?id=160250458) |
+| **Advanced Duplicator 2** | ✅ Yes | [Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=773402917) |
+| **Contraption Framework** | ✅ Yes | [Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3154971187) |
 
-## Requirements
+### Option 1: Steam Workshop (Recommended)
 
-ACE requires you have the following addons before using:
+Subscribe to ACE on the Steam Workshop for automatic updates:
 
-* **[Wiremod](https://steamcommunity.com/workshop/filedetails/?id=160250458)** 
-* **[Advanced Duplicator 2](https://steamcommunity.com/sharedfiles/filedetails/?id=773402917&searchtext=advanced+duplicator)** (ACE comes with some pre-made vehicles and tools only spawnable with this addon)
-* **[Contraption Framework](https://steamcommunity.com/sharedfiles/filedetails/?id=3154971187)**
+👉 **[Subscribe on Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3282568819)**
 
-## Workshop Edition
+### Option 2: Manual / Git Installation
 
-For a more straightforward installation process, consider grabbing the ACE Workshop edition. It's user-friendly and it includes automatic updates. [Get it here](https://steamcommunity.com/sharedfiles/filedetails/?id=2512558788).
+Clone this repository to your addons folder:
 
-## Manual Installation
+    git clone https://github.com/ACE-Project-Team/ArmoredCombatExtended.git
 
-You can clone this repository using **[Github Desktop](https://desktop.github.com/)**, **[GitKraken](https://www.gitkraken.com/)**  or downloading the Zip which is provided from green button "Code"
+Or use [GitHub Desktop](https://desktop.github.com/), [GitKraken](https://www.gitkraken.com/), or download as ZIP.
 
-If you dont like the methods above, you can use tortoiseGIT, which you can download **[here!](https://tortoisegit.org/)**. Also you'll need **[GIT](https://git-scm.com/downloads)**
+---
+## Features
 
-## Contributions & Contact
+### 🔫 Weapons & Ammunition
 
-We welcome contributions to ACE. Please review our [contribution guidelines](https://github.com/ACE-Project-Team/ArmoredCombatExtended/wiki/General-Coding-and-Style-Guidelines) on our wiki before getting started.
+- Large arsenal of cannons, autocannons, mortars, howitzers and machine guns
+- Missiles with 5+ guidance types and many accurate to real life models
+- Bombs and rockets for aircraft
+- Diverse ammo: AP, APHE, APFSDS, HEAT, HE, Smoke, and more
+- SWEPs for infantry combat - rifles, javelin missile launcher, anti tank mines and more
 
-To keep up with our progress, visit our [Trello board](https://trello.com/b/AW6lxk7z/ace-development) and join our [ACE Discord](https://discord.gg/Y8aEYU6).
+### 🚗 Mobility & Vehicles
 
-Explore our documentation and tutorials in the [ACE Wiki](https://github.com/ACE-Project-Team/ArmoredCombatExtended/wiki).
+- Realistic drivetrain simulation (engines, transmissions, differentials). Forget thrusters.
+- Fuel, heat system
+- Pre-made vehicles / tools included (spawn with Advanced Duplicator 2)
 
-Use the [Dev Branch](https://github.com/ACE-Project-Team/ArmoredCombatExtended/tree/dev) for contribution.
+### 🛡️ Armor & Damage
 
+- Realistic armor penetration calculations and composite armor - DU, ceramic, rubber, RHA, textolite and so on.
+- Component-based damage modeling, real tank modelling by using fuel, crew and more
+- Internal spalling and module damage
+- Balanced for competitive multiplayer
+- Realistic crew members: stamina, different positions, gforce & more
 
+### 📡 Sensors & Electronics
+
+- Multiple radar types with distinct capabilities - IRST, RWR, ECM, Tracking / Search Radar
+- Full Wiremod/E2 compatibility
+
+### 🎨 Effects & Immersion
+
+- Dynamic explosions with proper lighting
+- Speed of sound simulation
+- Tracer rounds, smoke, flares, chaff
+- Immersive audio ambience
+
+---
+
+## Documentation
+
+Full documentation is available at **[acegmod.com/wiki](https://acegmod.com/wiki)**
+
+- Getting Started Guides
+- Weapon & Ammo Reference
+- Vehicle Building Tutorials
+- E2/Wiremod Integration
+
+---
+
+## Contributing
+
+We welcome contributions! Before submitting:
+
+1. Read our [Contribution Guidelines](https://acegmod.com/wiki/contributing)
+2. Use the [Dev Branch](https://github.com/ACE-Project-Team/ArmoredCombatExtended/tree/dev) for pull requests
+3. Join our [Discord](https://discord.gg/Y8aEYU6) to discuss changes
+
+---
+
+## Community
+
+- 💬 **Discord**: [discord.gg/Y8aEYU6](https://discord.gg/Y8aEYU6)
+- 🎮 **Steam Workshop**: [Subscribe](https://steamcommunity.com/sharedfiles/filedetails/?id=3282568819)
+- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/ACE-Project-Team/ArmoredCombatExtended/issues)
+- 🎬 **Videos**: [YouTube](https://www.youtube.com/@ArmoredCombatExtended)
+
+## License
+
+ACE is open source under the [MIT license](LICENSE).
+
+---
+
+<p align="center">
+  <a href="https://acegmod.com">
+    <img src="ace_logo.png" alt="ACE Logo" width="128">
+  </a>
+  <br>
+  <strong>ACE - Armored Combat Extended</strong>
+  <br>
+  The definitive engineering and combat framework for Garry's Mod.
+  <br>
+  <a href="https://acegmod.com">acegmod.com</a>
+</p>
