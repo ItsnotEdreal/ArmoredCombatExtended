@@ -24,34 +24,34 @@ SWEP.ReloadSound = "Weapon_Pistol.Reload" --Sound other players hear when you re
 
 SWEP.ZoomFOV = 20
 SWEP.HasScope = true --True if the weapon has a sniper-style scope
-
+SWEP.ReticuleSize = 10
 
 --Recoil (crosshair movement) settings--
 --"Heat" is a number that represents how long you've been firing, affecting how quickly your crosshair moves upwards
 SWEP.HeatReductionRate = 300 --Heat loss per second when not firing
-SWEP.HeatReductionDelay = 0.15 --Delay after firing before beginning to reduce heat
 SWEP.HeatPerShot = 5 --Heat generated per shot
-SWEP.HeatMax = 50 --Maximum heat - determines max rate at which recoil is applied to eye angles
+SWEP.HeatMax = 37.5 --Maximum heat - determines max rate at which recoil is applied to eye angles
 				--Also determines point at which random spread is at its highest intensity
 				--HeatMax divided by HeatPerShot gives you how many shots until you reach MaxSpread
 
-SWEP.AngularRecoil = 40	--Amount of angular recoil
+SWEP.AngularRecoil = 28.125	--Amount of angular recoil
 
 --How much the recoil is biased to one side proportional to vertical recoil
 --Positive numbers bias to the right, negative to the left
 SWEP.RecoilSideBias = 0.2
 
-SWEP.ZoomRecoilBonus = 0.2 --Reduce recoil by this amount when zoomed or scoped
+SWEP.ZoomRecoilBonus = 0.5 --Reduce recoil by this amount when zoomed or scoped
 SWEP.CrouchRecoilBonus = 0.5 --Reduce recoil by this amount when crouching
-SWEP.ViewPunchAmount = 0 --Degrees to punch the view upwards each shot - does not actually move crosshair, just a visual effect
-
+SWEP.ViewPunchAmount = 0.2 --Degrees to punch the view upwards each shot - does not actually move crosshair, just a visual effect
+SWEP.AccurateCrosshair = true
 
 --Spread (aimcone) settings--
-SWEP.BaseSpread = 0.05 --First-shot random spread, in degrees
-SWEP.MaxSpread = 3 --Maximum added random spread from heat value, in degrees
+SWEP.BaseSpread = 0 --First-shot random spread, in degrees
+SWEP.MaxSpread = 1 --Maximum added random spread from heat value, in degrees
 					--If HeatMax is 0 this will be ignored and only BaseSpread will be taken into account (AT4 for example)
-SWEP.MovementSpread = 1.5 --Increase aimcone to this many degrees when sprinting at full speed
+SWEP.MovementSpread = 1 --Increase aimcone to this many degrees when sprinting at full speed
 SWEP.UnscopedSpread = 0.4 --Spread, in degrees, when unscoped with a scoped weapon
+
 
 
 --Model settings--
@@ -69,7 +69,7 @@ function SWEP:InitBulletData()
 	self.BulletData.Type = "AP"
 	self.BulletData.Id = 1
 	self.BulletData.Caliber = 0.556
-	self.BulletData.PropLength = 12.4 --Volume of the case as a cylinder * Powder density converted from g to kg
+	self.BulletData.PropLength = 11.5 --Volume of the case as a cylinder * Powder density converted from g to kg
 	self.BulletData.ProjLength = 5 --Volume of the projectile as a cylinder * streamline factor (Data5) * density of steel
 	self.BulletData.Data5 = 0 --He Filler or Flechette count
 	self.BulletData.Data6 = 0 --HEAT ConeAng or Flechette Spread
@@ -93,7 +93,7 @@ function SWEP:InitBulletData()
 	self.BulletData.MuzzleVel = ACF_MuzzleVelocity(self.BulletData.PropMass, self.BulletData.ProjMass, self.BulletData.Caliber)
 	self.BulletData.ShovePower = 0.2
 	self.BulletData.KETransfert = 0.3
-	self.BulletData.PenArea = self.BulletData.FrArea ^ ACF.PenAreaMod * 1.2
+	self.BulletData.PenArea = self.BulletData.FrArea ^ ACF.PenAreaMod * 2
 	self.BulletData.Pos = Vector(0, 0, 0)
 	self.BulletData.LimitVel = 800
 	self.BulletData.Ricochet = 60

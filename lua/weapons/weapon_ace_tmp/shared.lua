@@ -21,7 +21,7 @@ SWEP.Primary.BulletCount = 1 --Number of bullets to fire each shot, used for sho
 
 SWEP.ReloadSound = "Weapon_Pistol.Reload" --Sound other players hear when you reload - this is NOT your first-person sound
 										--Most models have a built-in first-person reload sound
-
+SWEP.ReticuleSize = 10
 SWEP.ZoomFOV = 60
 SWEP.HasScope = false --True if the weapon has a sniper-style scope
 
@@ -29,13 +29,13 @@ SWEP.HasScope = false --True if the weapon has a sniper-style scope
 --Recoil (crosshair movement) settings--
 --"Heat" is a number that represents how long you've been firing, affecting how quickly your crosshair moves upwards
 --SWEP.HeatReductionRate = 125 --Heat loss per second when not firing
-SWEP.HeatReductionRate = 100 --Heat loss per second when not firing
+SWEP.HeatReductionRate = 300 --Heat loss per second when not firing
 SWEP.HeatPerShot = 4 --Heat generated per shot
 SWEP.HeatMax = 25 --Maximum heat - determines max rate at which recoil is applied to eye angles
 				--Also determines point at which random spread is at its highest intensity
 				--HeatMax divided by HeatPerShot gives you how many shots until you reach MaxSpread
 
-SWEP.AngularRecoil = 5	--Amount of angular recoil
+SWEP.AngularRecoil = 20	--Amount of angular recoil
 
 --How much the recoil is biased to one side proportional to vertical recoil
 --Positive numbers bias to the right, negative to the left

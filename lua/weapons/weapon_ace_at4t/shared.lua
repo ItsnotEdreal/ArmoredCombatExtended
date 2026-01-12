@@ -170,7 +170,7 @@ function SWEP:PrimaryAttack()
 				Owner = owner,
 				Launcher = owner,
 
-				Pos = owner:GetShootPos() + owner:GetAimVector() * 800,
+				Pos = owner:GetShootPos() + owner:GetAimVector() * 850,
 				Ang = owner:GetAimVector():Angle(),
 
 				Mdl = "models/missiles/hvar.mdl",
@@ -188,7 +188,7 @@ function SWEP:PrimaryAttack()
 				BoostTime = 0,
 				BoostDelay = 0,
 
-				Drag = 0.001,
+				Drag = 0.003,
 				GuidanceName = "Dumb",
 				FuseName = "Contact",
 				HasInertial = false,
