@@ -57,7 +57,7 @@ function MakeACE_Crewseat_Gunner(Owner, Pos, Angle, Id, EntityData)
 end
 
 list.Set("ACFCvars", "ace_crewseat_gunner", {"id", "entitydata"})
-duplicator.RegisterEntityClass("ace_crewseat_gunner", MakeACE_Crewseat_Gunner, "Pos", "Angle", "Id", "Data")
+duplicator.RegisterEntityClass("ace_crewseat_gunner", MakeACE_Crewseat_Gunner, "Pos", "Angle", "Id", "ModelType")
 
 function ENT:GetPoseModifiers()
 	return ACE_GetPoseModifiers(self) or { gforce = 1, tilt = 1, accuracy = 1 }

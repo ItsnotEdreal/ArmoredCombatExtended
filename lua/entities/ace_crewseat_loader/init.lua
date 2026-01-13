@@ -59,7 +59,7 @@ function MakeACE_Crewseat_Loader(Owner, Pos, Angle, Id, EntityData)
 end
 
 list.Set("ACFCvars", "ace_crewseat_loader", {"id", "entitydata"})
-duplicator.RegisterEntityClass("ace_crewseat_loader", MakeACE_Crewseat_Loader, "Pos", "Angle", "Id", "Data")
+duplicator.RegisterEntityClass("ace_crewseat_loader", MakeACE_Crewseat_Loader, "Pos", "Angle", "Id", "ModelType")
 
 function ENT:GetPoseModifiers()
 	return ACE_GetPoseModifiers(self) or { gforce = 1, tilt = 1, stamina = 1 }
