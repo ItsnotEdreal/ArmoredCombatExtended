@@ -59,7 +59,7 @@ function MakeACE_Crewseat_Loader(Owner, Pos, Angle, Id, EntityData)
 end
 
 list.Set("ACFCvars", "ace_crewseat_loader", {"id", "entitydata"})
-duplicator.RegisterEntityClass("ace_crewseat_loader", MakeACE_Crewseat_Loader, "Pos", "Angle", "Id", "Data")
+duplicator.RegisterEntityClass("ace_crewseat_loader", MakeACE_Crewseat_Loader, "Pos", "Angle", "Id", "ModelType")
 
 function ENT:GetPoseModifiers()
 	return ACE_GetPoseModifiers(self) or { gforce = 1, tilt = 1, stamina = 1 }
@@ -125,7 +125,7 @@ function ENT:Think()
 	if self.Legal then
 		self:IncreaseStamina()
 	end
-	
+
 	local gun = self.LinkedGun
 	if not self.Legal and IsValid(gun) then
 		gun:Unlink(self)
@@ -211,19 +211,19 @@ function ENT:BuildDupeInfo()
 end
 
 function ENT:ApplyDupeInfo(ply, ent, info, GetEntByID)
-    self.BaseClass.ApplyDupeInfo(self, ply, ent, info, GetEntByID)
+	self.BaseClass.ApplyDupeInfo(self, ply, ent, info, GetEntByID)
 
-    local modelType = info.ModelType
+	local modelType = info.ModelType
 
-    -- Old dupes don't have ModelType saved, default to Sitting (original behavior)
-    if not modelType or not ACE.CrewseatModels[modelType] then
-        modelType = "Sitting"
-    end
+	-- Old dupes don't have ModelType saved, default to Sitting (original behavior)
+	if not modelType or not ACE.CrewseatModels[modelType] then
+		modelType = "Sitting"
+	end
 
-    self.ModelType = modelType
-    local model = ACE.CrewseatModels[modelType]
-    if model then
-        self:SetModel(model)
-        self.Model = model
-    end
+	self.ModelType = modelType
+	local model = ACE.CrewseatModels[modelType]
+	if model then
+		self:SetModel(model)
+		self.Model = model
+	end
 end
