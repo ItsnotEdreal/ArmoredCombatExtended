@@ -32,7 +32,7 @@ function Round.create( Gun, BulletData )
 		Owner = Gun:CPPIGetOwner(),
 		Launcher = Gun,
 
-		Pos = Gun:GetAttachment(1).Pos + Gun:GetForward() * 39.37,
+		Pos = Gun:LocalToWorld(Gun.Muzzle),
 		Ang = Gun:GetAngles(),
 
 		Mdl = mdl,

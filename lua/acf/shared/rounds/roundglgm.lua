@@ -34,7 +34,7 @@ function Round.create( Gun, BulletData )
 		Owner = Gun:CPPIGetOwner(),
 		Launcher = Gun,
 
-		Pos = Gun:GetAttachment(1).Pos + Gun:GetForward() * 39.37,
+		Pos = Gun:LocalToWorld(Gun.Muzzle),
 		Ang = Gun:GetAngles(),
 
 		Mdl = mdl,
@@ -58,7 +58,7 @@ function Round.create( Gun, BulletData )
 		HasInertial = false,
 		HasDatalink = false,
 
-		ArmDelay = 0.0,
+		ArmDelay = 0.15,
 		DelayPrediction = 0.1,
 		ArmorThickness = 15,
 
