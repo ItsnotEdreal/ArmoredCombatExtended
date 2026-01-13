@@ -215,19 +215,19 @@ function ENT:BuildDupeInfo()
 end
 
 function ENT:ApplyDupeInfo(ply, ent, info, GetEntByID)
-    self.BaseClass.ApplyDupeInfo(self, ply, ent, info, GetEntByID)
+	self.BaseClass.ApplyDupeInfo(self, ply, ent, info, GetEntByID)
 
-    local modelType = info.ModelType
+	local modelType = info.ModelType
 
-    -- Old dupes don't have ModelType saved, default to Sitting (original behavior)
-    if not modelType or not ACE.CrewseatModels[modelType] then
-        modelType = "Sitting"
-    end
+	-- Old dupes don't have ModelType saved, default to Sitting (original behavior)
+	if not modelType or not ACE.CrewseatModels[modelType] then
+		modelType = "Sitting"
+	end
 
-    self.ModelType = modelType
-    local model = ACE.CrewseatModels[modelType]
-    if model then
-        self:SetModel(model)
-        self.Model = model
-    end
+	self.ModelType = modelType
+	local model = ACE.CrewseatModels[modelType]
+	if model then
+		self:SetModel(model)
+		self.Model = model
+	end
 end

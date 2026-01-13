@@ -307,7 +307,7 @@ function this:AcquireLock(missile)
 		absang	= Angle(math.abs(ang.p),math.abs(ang.y),0) --Since I like ABS so much
 
 
-		local SeekExpanded = self.SeekCone*SeekMul --Expanded Seeker Angle used for searching without a target.
+		local SeekExpanded = self.SeekCone * SeekMul --Expanded Seeker Angle used for searching without a target.
 		if absang.p < SeekExpanded and absang.y < SeekExpanded then --Entity is within missile cone
 
 			testang = absang.p + absang.y --Could do pythagorean stuff but meh, works 98% of time
