@@ -29,12 +29,16 @@ function Round.create( Gun, BulletData )
 	end
 
 	local SMul = 15 / BulletData.Caliber * BulletData.MuzzleVel / 200
+	-- Calculate muzzle position from gun's bounding box
+	-- This is more reliable than GetAttachment for parented entities
+	local muzzleLength = Gun:OBBMaxs().x  -- Distance from center to front of model
+	local spawnPos = Gun:GetPos() + Gun:GetForward() * (muzzleLength + 39.37)
 
 	local MDat = {
 		Owner = Gun:CPPIGetOwner(),
 		Launcher = Gun,
 
-		Pos = Gun:GetAttachment(1).Pos + Gun:GetForward() * 39.37,
+		Pos = spawnPos,
 		Ang = Gun:GetAngles(),
 
 		Mdl = mdl,
@@ -58,7 +62,7 @@ function Round.create( Gun, BulletData )
 		HasInertial = false,
 		HasDatalink = false,
 
-		ArmDelay = 0.0,
+		ArmDelay = 0.15,
 		DelayPrediction = 0.1,
 		ArmorThickness = 15,
 
