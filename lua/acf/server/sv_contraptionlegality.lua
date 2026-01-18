@@ -553,7 +553,9 @@ local function ACE_GetArmorTimerId(con)
 		local created = dupe and dupe.CreatedEntities
 		if not created then return end
 	ACE_ApplyDirtyGrace(created, ArmorDirtyGraceDupe)
-	ACE_CaptureInitialArmorSnapshot(created)
+	timer.Simple(0.1, function()
+		ACE_CaptureInitialArmorSnapshot(created)
+	end)
 	for _, ent in pairs(created) do
 		if IsValid(ent) then
 			local con = ACE_GetContraptionFromEntity(ent)
