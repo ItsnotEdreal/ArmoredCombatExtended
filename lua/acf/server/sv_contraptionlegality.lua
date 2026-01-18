@@ -1,5 +1,9 @@
 ACE = ACE or {}
 
+local function ACE_ConVarHelp(desc)
+	return "ACE - " .. desc
+end
+
 local ArmorClasses = {
 	prop_physics = true,
 	primitive_shape = true,
@@ -60,7 +64,14 @@ end
 -- Ammo scoring config lives in acf_globals.lua for centralized tuning.
 local AmmoTypeFactors = ACE.AmmoTypeFactors
 local AmmoCostConfig = ACE.AmmoCostConfig
+local ArmorDirtyGrace = 0.5
+local ArmorDirtyGraceDupe = 1.5
+local ArmorDirtyGracePostScanDupe = 1.5
 
+local ACE_CalcContraptionArmor
+
+local ACE_DebugDirty
+local ACE_DumpDirtyStats
 ACE.DupeArmorCache = ACE.DupeArmorCache or {}
 ACE.DupeArmorCacheVersion = ACE.DupeArmorCacheVersion or 1
 ACE.DupeArmorCacheLastClear = ACE.DupeArmorCacheLastClear or CurTime()
@@ -69,7 +80,7 @@ local DupeArmorCacheTtl = CreateConVar(
 	"ace_dupe_armor_cache_ttl",
 	"1800",
 	FCVAR_ARCHIVE,
-	"Seconds between clearing the dupe armor cache (0 to disable)."
+	ACE_ConVarHelp("Seconds between clearing the dupe armor cache (0 to disable).")
 )
 
 timer.Create("ACE_DupeArmorCacheGC", 60, 0, function()
@@ -413,7 +424,49 @@ do
 		return not phys:IsMotionEnabled()
 	end
 
-	local function ACE_GetArmorTimerId(con)
+	local function ACE_ApplyDirtyGrace(entities, graceSeconds)
+	if not istable(entities) then return end
+	local grace = tonumber(graceSeconds) or 0
+	if grace <= 0 then return end
+	local now = CurTime()
+	local scheduled = {}
+	for _, ent in pairs(entities) do
+		if not IsValid(ent) then continue end
+		local con = ACE_GetContraptionFromEntity(ent)
+		if not con or scheduled[con] then continue end
+		scheduled[con] = true
+		local untilTime = now + grace
+		local current = con.ACEIgnoreDirtyUntil or 0
+		if untilTime > current then
+			con.ACEIgnoreDirtyUntil = untilTime
+		end
+		ACE_DebugDirty(con, "apply-grace", ent, string.format("grace=%.2f", grace))
+	end
+end
+
+local function ACE_CaptureInitialArmorSnapshot(entities)
+	if not istable(entities) then return end
+	local scheduled = {}
+	for _, ent in pairs(entities) do
+		if not IsValid(ent) then continue end
+		local con = ACE_GetContraptionFromEntity(ent)
+		if not con or scheduled[con] then continue end
+		scheduled[con] = true
+		local base = con.GetACEBaseplate and con:GetACEBaseplate() or nil
+		if not IsValid(base) then continue end
+		local f, s = ACE_CalcContraptionArmor(base)
+		if (f and f > 0) or (s and s > 0) then
+			con.ACEArmorInitSnapshot = {
+				Front = f or 0,
+				Side = s or 0,
+				Time = CurTime()
+			}
+			ACE_DebugDirty(con, "init-scan-snapshot", base, string.format("front=%.2f side=%.2f", f or 0, s or 0))
+		end
+	end
+end
+
+local function ACE_GetArmorTimerId(con)
 		if con.ACEArmorTimerId then return con.ACEArmorTimerId end
 		local index = ACE_GetContraptionIndex and ACE_GetContraptionIndex(con) or tostring(con)
 		con.ACEArmorTimerId = "ACE_ArmorInit_" .. index
@@ -461,7 +514,6 @@ do
 			if not IsValid(ent) then continue end
 			local con = ACE_GetContraptionFromEntity(ent)
 			if not con or scheduled[con] then continue end
-			if skipFrozen and ACE_IsContraptionFrozen(con) then continue end
 			scheduled[con] = true
 			if cacheKey and not con.ACEArmorCacheKey then
 				con.ACEArmorCacheKey = cacheKey
@@ -469,6 +521,7 @@ do
 			if cachedData then
 				con.ACEArmorCachedData = cachedData
 			end
+			if skipFrozen and ACE_IsContraptionFrozen(con) then continue end
 			ACE_ScheduleInitArmor(con, delay, force, cacheKey)
 		end
 	end
@@ -476,6 +529,16 @@ do
 	hook.Add("PlayerUnfrozeObject", "ACE_ArmorInitOnUnfreeze", function(_, ent)
 		local con = ACE_GetContraptionFromEntity(ent)
 		if not con then return end
+		if IsValid(ent) and ent._ACEAdvDupeArmorInit then
+			local untilTime = CurTime() + (ArmorDirtyGraceDupe or 0)
+			local current = con.ACEIgnoreDirtyUntil or 0
+			if untilTime > current then
+				con.ACEIgnoreDirtyUntil = untilTime
+			end
+			con.ACEFromDupePaste = true
+			ent._ACEAdvDupeArmorInit = nil
+			ACE_DebugDirty(con, "apply-grace:unfreeze", ent, string.format("grace=%.2f", ArmorDirtyGraceDupe or 0))
+		end
 		ACE_ScheduleInitArmor(con, 0.1, false)
 	end)
 
@@ -489,6 +552,16 @@ do
 		local dupe = istable(dupeInfo) and dupeInfo[1]
 		local created = dupe and dupe.CreatedEntities
 		if not created then return end
+	ACE_ApplyDirtyGrace(created, ArmorDirtyGraceDupe)
+	ACE_CaptureInitialArmorSnapshot(created)
+	for _, ent in pairs(created) do
+		if IsValid(ent) then
+			local con = ACE_GetContraptionFromEntity(ent)
+			if con then
+				con.ACEFromDupePaste = true
+			end
+		end
+	end
 		local cacheKey = ACE_GetDupeSignature(dupe, created)
 		local cached = cacheKey and ACE.DupeArmorCache and ACE.DupeArmorCache[cacheKey] or nil
 		local flagName = "_ACEAdvDupeArmorInit"
@@ -519,8 +592,6 @@ do
 	end)
 end
 
-
-
 local function ACE_HasArmorInit(Contraption)
 	if not Contraption then return false end
 	if Contraption.ACEArmorCalculated then return true end
@@ -528,64 +599,186 @@ local function ACE_HasArmorInit(Contraption)
 	return lastCalc > 0
 end
 
+local function ACE_GetContraptionOwner(Contraption)
+	if not Contraption then return nil end
+	local base = Contraption.GetACEBaseplate and Contraption:GetACEBaseplate()
+	if not IsValid(base) or not base.CPPIGetOwner then return nil end
+	local owner = base:CPPIGetOwner()
+	return IsValid(owner) and owner or nil
+end
+
+local function ACE_GetOwnerName(owner)
+	return IsValid(owner) and owner:Nick() or "Unknown"
+end
+
+local function ACE_ShouldIgnoreDirty(Contraption)
+	if not ACE_HasArmorInit(Contraption) then return true end
+	if Contraption and Contraption.ACERemoving then return true end
+	local untilTime = Contraption and Contraption.ACEIgnoreDirtyUntil
+	return untilTime and CurTime() < untilTime
+end
+
+ACE_DebugDirty = function(Contraption, reason, ent, extra)
+	if not armorDebugCvar or not armorDebugCvar.GetBool or not armorDebugCvar:GetBool() then return end
+	local id = ACE_GetContraptionIndex and ACE_GetContraptionIndex(Contraption) or tostring(Contraption)
+	local entClass = IsValid(ent) and ent:GetClass() or "?"
+	local parentClass = "-"
+	if IsValid(ent) then
+		local parent = ent:GetParent()
+		if IsValid(parent) then
+			parentClass = parent:GetClass()
+		end
+	end
+	local lastCalc = Contraption and Contraption.ACEArmorLastCalc or 0
+	local sinceCalc = lastCalc > 0 and (CurTime() - lastCalc) or -1
+	local ignoreUntil = Contraption and Contraption.ACEIgnoreDirtyUntil or 0
+	local base = Contraption and Contraption.GetACEBaseplate and Contraption:GetACEBaseplate() or nil
+	local frozen = "?"
+	if IsValid(base) then
+		local phys = base:GetPhysicsObject()
+		frozen = (IsValid(phys) and not phys:IsMotionEnabled()) and "yes" or "no"
+	end
+	local key = string.format("%s|%s|%s|%s", id, reason, entClass, parentClass)
+	local stat = armorDirtyDebugStats[key]
+	if not stat then
+		stat = {
+			Count = 0,
+			LastSeen = 0,
+			Id = id,
+			Reason = reason,
+			Ent = entClass,
+			Parent = parentClass,
+			LastCalc = sinceCalc,
+			IgnoreUntil = ignoreUntil,
+			Frozen = frozen,
+			Extra = extra
+		}
+		armorDirtyDebugStats[key] = stat
+	end
+	stat.Count = stat.Count + 1
+	stat.LastSeen = CurTime()
+	stat.LastCalc = sinceCalc
+	stat.IgnoreUntil = ignoreUntil
+	stat.Frozen = frozen
+	if extra then stat.Extra = extra end
+
+end
+
+ACE_DumpDirtyStats = function(clearAfter)
+	if not armorDebugCvar or not armorDebugCvar:GetBool() then return end
+	local entries = {}
+	for _, entry in pairs(armorDirtyDebugStats) do
+		entries[#entries + 1] = entry
+	end
+	table.sort(entries, function(a, b)
+		if a.Count == b.Count then
+			return tostring(a.Id) < tostring(b.Id)
+		end
+		return a.Count > b.Count
+	end)
+	local maxLines = 8
+	local printed = 0
+	for _, entry in ipairs(entries) do
+		printed = printed + 1
+		if printed > maxLines then break end
+		local extraInfo = entry.Extra and (" " .. tostring(entry.Extra)) or ""
+		print(string.format(
+			"[ACE ArmorDirty] %s id=%s cnt=%d ent=%s parent=%s dt=%.2f ignore=%.2f frozen=%s%s",
+			entry.Reason,
+			entry.Id,
+			entry.Count,
+			entry.Ent,
+			entry.Parent,
+			entry.LastCalc,
+			entry.IgnoreUntil,
+			entry.Frozen,
+			extraInfo
+		))
+	end
+	if clearAfter then
+		armorDirtyDebugStats = {}
+	end
+end
+
+concommand.Add("ace_armor_dirty_debug_dump", function()
+	ACE_DumpDirtyStats(false)
+end)
+
+concommand.Add("ace_armor_dirty_debug_clear", function()
+	armorDirtyDebugStats = {}
+end)
 
 local function ACE_NotifyContraptionModified(Contraption)
-	if not ACE_HasArmorInit(Contraption) then return end
-
-	Contraption.OTWarnings = Contraption.OTWarnings or {}
-	if Contraption.OTWarnings.WarnedModified then return end
+	if not ACE_HasArmorInit(Contraption) then
+		ACE_DebugDirty(Contraption, "notify-skip:no-init")
+		return
+	end
+	if Contraption.ACERemoving then
+		ACE_DebugDirty(Contraption, "notify-skip:removing")
+		return
+	end
+	if not Contraption.ACEArmorDirty then
+		ACE_DebugDirty(Contraption, "notify-skip:not-dirty")
+		return
+	end
 
 	local base = Contraption.GetACEBaseplate and Contraption:GetACEBaseplate()
-	local owner = IsValid(base) and base.CPPIGetOwner and base:CPPIGetOwner() or nil
-	local name = IsValid(owner) and owner:Nick() or "Unknown"
-	local msg = "[ACE] " .. name .. " modified a vehicle after cost initialization."
-	if Contraption.ACEArmorDirty then
-		msg = msg .. " Armor cost marked dirty."
+	if not IsValid(base) or (base.IsBeingRemoved and base:IsBeingRemoved()) then
+		ACE_DebugDirty(Contraption, "notify-skip:base-invalid", base)
+		return
 	end
+	if Contraption.ents and next(Contraption.ents) == nil then
+		ACE_DebugDirty(Contraption, "notify-skip:empty-contraption", base)
+		return
+	end
+
+	Contraption.OTWarnings = Contraption.OTWarnings or {}
+	if Contraption.OTWarnings.WarnedModified then
+		ACE_DebugDirty(Contraption, "notify-skip:already-warned", base)
+		return
+	end
+
+	local name = ACE_GetOwnerName(ACE_GetContraptionOwner(Contraption))
+	local msg = "[ACE] " .. name .. " modified a vehicle after cost initialization. Armor cost marked dirty."
 
 	chatMessageGlobal(msg, Color(255, 200, 0))
 	Contraption.OTWarnings.WarnedModified = true
+	ACE_DebugDirty(Contraption, "notify-sent", base)
 end
 
 function ACE_CheckLegalCont(Contraption)
-
 	-- Track one-time warning flags per contraption to avoid repeated spam.
 	Contraption.OTWarnings = Contraption.OTWarnings or {}
-	local HasWarned = false
 
 	if Contraption.ACEArmorDirty then
 		ACE_NotifyContraptionModified(Contraption)
 	end
 
-	HasWarned = Contraption.OTWarnings.WarnedOverPoints or false
-	if Contraption.ACEPoints > ACF.PointsLimit and not HasWarned then
-		local Ply = Contraption:GetACEBaseplate():CPPIGetOwner()
-		local AboveAmt = Contraption.ACEPoints - ACF.PointsLimit
-		local msg = "[ACE] " .. Ply:Nick() .. " has a vehicle [" .. math.ceil(AboveAmt) .. "pts] over the limit costing [" .. math.ceil(Contraption.ACEPoints) .. "pts / " .. math.ceil(ACF.PointsLimit) .. "pts]"
-
-		chatMessageGlobal( msg, Color( 255, 234, 0))
-
+	if Contraption.ACEPoints > ACF.PointsLimit and not Contraption.OTWarnings.WarnedOverPoints then
+		local name = ACE_GetOwnerName(ACE_GetContraptionOwner(Contraption))
+		local above = Contraption.ACEPoints - ACF.PointsLimit
+		local msg = "[ACE] " .. name .. " has a vehicle [" .. math.ceil(above) .. "pts] over the limit costing [" .. math.ceil(Contraption.ACEPoints) .. "pts / " .. math.ceil(ACF.PointsLimit) .. "pts]"
+		chatMessageGlobal(msg, Color(255, 234, 0))
 		Contraption.OTWarnings.WarnedOverPoints = true
 	end
 
-	if Contraption.totalMass > ACF.MaxWeight and not HasWarned then
-		local Ply = Contraption:GetACEBaseplate():CPPIGetOwner()
-		local AboveAmt = Contraption.totalMass - ACF.MaxWeight
-
-		local msg = "[ACE] " .. Ply:Nick() .. " has a vehicle [" .. math.ceil(AboveAmt) .. "kg] over the limit, weighing [" .. math.ceil(Contraption.totalMass) .. "kg / " .. math.ceil(ACF.MaxWeight) .. "kg]"
-		chatMessageGlobal( msg, Color( 255, 234, 0))
-
+	if Contraption.totalMass > ACF.MaxWeight and not Contraption.OTWarnings.WarnedOverWeight then
+		local name = ACE_GetOwnerName(ACE_GetContraptionOwner(Contraption))
+		local above = Contraption.totalMass - ACF.MaxWeight
+		local msg = "[ACE] " .. name .. " has a vehicle [" .. math.ceil(above) .. "kg] over the limit, weighing [" .. math.ceil(Contraption.totalMass) .. "kg / " .. math.ceil(ACF.MaxWeight) .. "kg]"
+		chatMessageGlobal(msg, Color(255, 234, 0))
 		Contraption.OTWarnings.WarnedOverWeight = true
 	end
-
 end
 
-local armorDebugCvar = CreateConVar("ace_armor_debugvis", "0", FCVAR_ARCHIVE, "Draw debug overlays for armor scan results.")
+local armorDebugCvar = CreateConVar("ace_armor_debug", "0", FCVAR_ARCHIVE, ACE_ConVarHelp("Enable armor debug overlays and dirty debug output."))
+armorDirtyDebugStats = {}
+armorDirtyDebugLastFlush = 0
 
 -- Estimate contraption frontal/side armor using line-of-sight traces.
 -- Samples multiple points on critical components and weights by projected area
 -- to stabilize results across irregular geometry.
-local function ACE_CalcContraptionArmor(ent)
+ACE_CalcContraptionArmor = function(ent)
 	if not IsValid(ent) then return 0, 0 end
 
 	local contraption = ent.GetContraption and ent:GetContraption() or nil
@@ -1426,6 +1619,17 @@ function ACE_EnsureArmor(Contraption, baseEnt, force)
 		ACE_RebuildNonArmorPoints(Contraption, base)
 	end
 
+	local snapshot = Contraption.ACEArmorInitSnapshot
+	if snapshot then
+		if snapshot.Front and snapshot.Front > 0 then
+			front = math.min(front, snapshot.Front)
+		end
+		if snapshot.Side and snapshot.Side > 0 then
+			side = math.min(side, snapshot.Side)
+		end
+		Contraption.ACEArmorInitSnapshot = nil
+	end
+
 	-- Convert armor averages to points; side armor counts double to reflect exposure.
 	local newArmorPts = (front + side * 2) * 4
 	Contraption.ACEPointsPerType = Contraption.ACEPointsPerType or {}
@@ -1434,6 +1638,16 @@ function ACE_EnsureArmor(Contraption, baseEnt, force)
 	Contraption.ACEArmorPoints = newArmorPts
 	Contraption.ACEArmorDirty = false
 	Contraption.ACEArmorCalculated = true
+	local ignoreUntil = CurTime() + (ArmorDirtyGrace or 0)
+	if Contraption.ACEFromDupePaste then
+		ignoreUntil = math.max(ignoreUntil, CurTime() + (ArmorDirtyGracePostScanDupe or 0))
+		timer.Simple(ArmorDirtyGracePostScanDupe or 0, function()
+			if Contraption then
+				Contraption.ACEFromDupePaste = nil
+			end
+		end)
+	end
+	Contraption.ACEIgnoreDirtyUntil = ignoreUntil
 	if Contraption.OTWarnings then
 		Contraption.OTWarnings.WarnedModified = false
 	end
@@ -1452,7 +1666,9 @@ function ACE_EnsureArmor(Contraption, baseEnt, force)
 	Contraption.ACEArmorCacheKey = nil
 	Contraption.ACEArmorCachedData = nil
 
-	if armorDebugCvar:GetBool() then
+	ACE_DebugDirty(Contraption, "armor-scan-complete", base, string.format("front=%.2f side=%.2f cache=%s", front or 0, side or 0, tostring(usedCache)))
+
+	if armorDebugCvar and armorDebugCvar:GetBool() then
 		print(string.format("[ACE ArmorDbg] Front=%.2f Side=%.2f Pts(x4)=%.2f", front or 0, side or 0, newArmorPts))
 		if IsValid(base) then
 			debugoverlay.Text(base:WorldSpaceCenter(), string.format("F %.2f | S %.2f | Pts(x4) %.2f", front or 0, side or 0, newArmorPts), 30, true)
@@ -1461,7 +1677,6 @@ function ACE_EnsureArmor(Contraption, baseEnt, force)
 end
 
 function ACE_GetEntPoints(Ent)
-	local Points = 0 -- Base for per-entity point adjustments.
 	--[[ Legacy mass/material-based point calculation (deprecated).
 	     Kept for reference if the scoring model is revisited in the future.
 	if IsValid(Ent) then
@@ -1472,20 +1687,15 @@ function ACE_GetEntPoints(Ent)
 	if not IsValid(Ent) then return 0 end
 
 	local class = Ent:GetClass()
-	if ArmorClasses[class] then
-		-- Armor is scored at the contraption level; individual props contribute zero here.
-		return 0
-	end
-	if class == "acf_fueltank" then
-		return 0
-	end
-	if class == "acf_ammo" or class == "acf_gun" or class == "acf_rack" then
+	if ArmorClasses[class]
+		or class == "acf_fueltank"
+		or class == "acf_ammo"
+		or class == "acf_gun"
+		or class == "acf_rack" then
 		return 0
 	end
 
-	Points = Points + (Ent.ACEPoints or 0)
-
-	return Points
+	return Ent.ACEPoints or 0
 end
 
 do
@@ -1495,12 +1705,12 @@ do
 
 	function PHYS:SetMass(mass)
 
-		local ent     = self:GetEntity()
+		local ent = self:GetEntity()
 		local oldPointValue = ent._AcePts or 0 -- Default to zero if no cached points exist yet.
 
-	ent._AcePts = ACE_GetEntPoints(ent)
+		ent._AcePts = ACE_GetEntPoints(ent)
 
-		ACE_Override_SetMass(self,mass)
+		ACE_Override_SetMass(self, mass)
 
 		local con = ent:GetContraption()
 		if not con then return end
@@ -1510,7 +1720,12 @@ do
 
 		if eclass == "Ignore" then return end
 		if eclass == "Armor" then
+			if ACE_ShouldIgnoreDirty(con) then
+				ACE_DebugDirty(con, "skip-grace:setmass", ent)
+				return
+			end
 			con.ACEArmorDirty = true
+			ACE_DebugDirty(con, "mark-dirty:setmass", ent)
 			ACE_NotifyContraptionModified(con)
 			return
 		end
@@ -1532,21 +1747,33 @@ do
 		Class.ACEAmmoCache = nil
 
 		Class.ACEPointsPerType = {}
-		Class.ACEPointsPerType.Armor = 0
-		Class.ACEPointsPerType.Engines = 0
-		Class.ACEPointsPerType.Firepower = 0
-		Class.ACEPointsPerType.Ammo = 0
-		Class.ACEPointsPerType.AmmoReady = 0
-		Class.ACEPointsPerType.AmmoBackup = 0
-		Class.ACEPointsPerType.AmmoReadyRounds = 0
-		Class.ACEPointsPerType.AmmoBackupRounds = 0
-		Class.ACEPointsPerType.Crew = 0
-		Class.ACEPointsPerType.Electronics = 0
+		for _, key in ipairs({
+			"Armor",
+			"Engines",
+			"Firepower",
+			"Ammo",
+			"AmmoReady",
+			"AmmoBackup",
+			"AmmoReadyRounds",
+			"AmmoBackupRounds",
+			"Crew",
+			"Electronics"
+		}) do
+			Class.ACEPointsPerType[key] = 0
+		end
 	end
 
 	hook.Add("cfw.contraption.created", "ACE_InitPoints", ACE_InitPts)
-	hook.Add("cfw.family.created", "ACE_InitPoints", ACE_InitPts)
+hook.Add("cfw.contraption.removed", "ACE_ContraptionRemoving", function(Contraption)
+	if not Contraption then return end
+	Contraption.ACERemoving = true
+	if Contraption.OTWarnings then
+		Contraption.OTWarnings.WarnedModified = true
+	end
+	ACE_DebugDirty(Contraption, "contraption-removed")
+end)
 
+	hook.Add("cfw.family.created", "ACE_InitPoints", ACE_InitPts)
 
 	function ACE_AddPts(Class, Ent)
 		if not IsValid(Ent) then return end
@@ -1574,7 +1801,12 @@ do
 
 		if Ent._ACEPointsConRef == conRef then
 			if EClass == "Armor" then
+				if ACE_ShouldIgnoreDirty(Class) then
+					ACE_DebugDirty(Class, "skip-grace:addpts-existing", Ent)
+					return
+				end
 				Class.ACEArmorDirty = true
+				ACE_DebugDirty(Class, "mark-dirty:addpts-existing", Ent)
 				ACE_NotifyContraptionModified(Class)
 			else
 				local delta = newPts - oldPts
@@ -1600,7 +1832,12 @@ do
 		Ent._AcePts = newPts
 
 		if EClass == "Armor" then
+			if ACE_ShouldIgnoreDirty(Class) then
+				ACE_DebugDirty(Class, "skip-grace:addpts-new", Ent)
+				return
+			end
 			Class.ACEArmorDirty = true
+			ACE_DebugDirty(Class, "mark-dirty:addpts-new", Ent)
 			ACE_NotifyContraptionModified(Class)
 		else
 			Class.ACEPoints = (Class.ACEPoints or 0) + newPts
@@ -1614,6 +1851,7 @@ do
 
 	function ACE_RemPts(Class, Ent)
 		if not IsValid(Ent) then return end
+		if Ent.IsBeingRemoved and Ent:IsBeingRemoved() then return end
 
 		if Ent._ACEPointsConRef and Ent._ACEPointsConRef ~= Class then return end
 		Ent._ACEPointsConKey = nil
@@ -1628,7 +1866,12 @@ do
 
 		if EClass == "Ignore" then return end
 		if EClass == "Armor" then
+			if ACE_ShouldIgnoreDirty(Class) then
+				ACE_DebugDirty(Class, "skip-grace:rempts", Ent)
+				return
+			end
 			Class.ACEArmorDirty = true
+			ACE_DebugDirty(Class, "mark-dirty:rempts", Ent)
 			ACE_NotifyContraptionModified(Class)
 			return
 		end
@@ -1644,6 +1887,5 @@ do
 
 	hook.Add("cfw.contraption.entityRemoved", "ACE_RemPoints", ACE_RemPts)
 	hook.Add("cfw.family.subbed", "ACE_RemPoints", ACE_RemPts)
-
 
 end
