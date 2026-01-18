@@ -18,12 +18,12 @@ if CLIENT then
 	}
 end
 
---Used by the panel. If i can to use the TOOL itself for this, i would be really appreciated
+-- Shared panel state used across panel rebuilds to keep UI controls stable.
 local ToolPanel = ToolPanel or {}
 
-CreateClientConVar( "acfarmorprop_area", 0, false, true ) -- we don't want this one to save
+CreateClientConVar( "acfarmorprop_area", 0, false, true ) -- Transient area cache; do not persist.
 
--- Calculates mass, armor, and health given prop area and desired ductility and thickness.
+-- Compute mass, armor, and health from prop area, ductility, thickness, and material.
 local function CalcArmor( Area, Ductility, Thickness, Mat )
 
 	Mat = Mat or "RHA"
@@ -40,7 +40,7 @@ local function CalcArmor( Area, Ductility, Thickness, Mat )
 end
 
 
--- Apply settings to prop and store dupe info
+-- Apply tool settings to a prop and store duplicator metadata.
 local function ApplySettings( _, ent, data )
 
 	if not SERVER then return end
@@ -60,7 +60,8 @@ local function ApplySettings( _, ent, data )
 
 	local con = ent:GetContraption()
 
-	if con then ACE_RemPts(con, ent) end --Stupid roundabout fix. But only executed when the mat is changed. Hey if it works.
+	-- Rebuild contraption points when material changes to keep totals consistent.
+	if con then ACE_RemPts(con, ent) end
 
 	if data.Material then
 		ent.ACF = ent.ACF or {}
@@ -75,7 +76,7 @@ end
 duplicator.RegisterEntityModifier( "acfsettings", ApplySettings )
 duplicator.RegisterEntityModifier( "mass", ApplySettings )
 
--- Apply settings to prop
+-- Left-click applies the current tool settings to the targeted prop.
 function TOOL:LeftClick( trace )
 
 	local ent = trace.Entity
@@ -94,14 +95,14 @@ function TOOL:LeftClick( trace )
 
 	ApplySettings( ply, ent, { Mass = mass , Ductility = ductility, Material = material} )
 
-	-- this invalidates the entity and forces a refresh of networked armor values
+	-- Clear cached target to force a fresh network update of armor values.
 	self.AimEntity = nil
 
 	return true
 
 end
 
--- Suck settings from prop
+-- Right-click copies the targeted prop settings into the tool.
 function TOOL:RightClick( trace )
 
 	local ent = trace.Entity
@@ -116,14 +117,15 @@ function TOOL:RightClick( trace )
 	ply:ConCommand( "acfarmorprop_thickness " .. ent.ACF.MaxArmour )
 	ply:ConCommand( "acfarmorprop_material " .. (ent.ACF.Material or "RHA") )
 
-	-- this invalidates the entity and forces a refresh of networked armor values
+	-- Clear cached target to force a fresh network update of armor values.
 	self.AimEntity = nil
 
 	return true
 
 end
 
-do -- Allowing everyone to read contraptions
+do
+	-- Allow read-only armor inspection even when CanTool would block edits.
 	ACE_OldHookCall = ACE_OldHookCall or hook.Call
 
 	function hook.Call(Name, Gamemode, Player, Entity, Tool, ...)
@@ -135,7 +137,7 @@ do -- Allowing everyone to read contraptions
 	end
 end
 
--- Total up mass of constrained ents
+-- Reload aggregates mass across constrained entities.
 function TOOL:Reload( trace )
 
 	local ent = trace.Entity
@@ -143,42 +145,127 @@ function TOOL:Reload( trace )
 	if not IsValid( ent ) or ent:IsPlayer() then return false end
 	if CLIENT then return true end
 
-	local data		= ACF_CalcMassRatio(ent, true)
+	local ply = self:GetOwner()
+	local now = CurTime()
+	local lastReload = ply.ACE_ArmorReloadLast or 0
+	local doubleTapWindow = ACE.ArmorPreviewTapWindow or 0.35
+	local doubleTap = (now - lastReload) <= doubleTapWindow
+	ply.ACE_ArmorReloadLast = now
 
-	local total		= ent.acftotal
-	local phystotal	= ent.acfphystotal
-	local parenttotal	= ent.acftotal - ent.acfphystotal
-	local physratio	= 100 * ent.acfphystotal / ent.acftotal
+	local function safeNumber(value)
+		value = tonumber(value) or 0
+		if value ~= value or value == math.huge or value == -math.huge then
+			return 0
+		end
+		return value
+	end
 
-	local power		= data.Power
+	local data		= ACF_CalcMassRatio(ent, true) or {}
 
-	local GeneralTb	= { data.MaterialMass, data.MaterialPercent }
-	local ToJSON		= util.TableToJSON( GeneralTb )
-	local Compressed	= util.Compress(ToJSON)
+	local total		= tonumber(ent.acftotal) or 0
+	local phystotal	= tonumber(ent.acfphystotal) or 0
+	local parenttotal	= total - phystotal
+	local physratio	= total > 0 and (100 * phystotal / total) or 0
+
+	local power		= tonumber(data.Power) or 0
 
 	local Contraption = ent:GetContraption() or nil
+	local details = Contraption and Contraption.ACEPointsDetails or nil
 	local PointVal		= 0
 
 	local PtsArmor = 0
 	local PtsEngine = 0
 	local PtsFirepower = 0
-	local PtsFuel = 0
 	local PtsAmmo = 0
+	local PtsAmmoReady = 0
+	local PtsAmmoBackup = 0
+	local AmmoReadyRounds = 0
+	local AmmoBackupRounds = 0
 	local PtsCrew = 0
 	local PtsElectronics = 0
+	local ArmorDirty = false
+	local ArmorInitMissing = false
+	local HypoUsed = false
+	local HypoFront = 0
+	local HypoSide = 0
+	local HypoPts = 0
+	local HypoRequested = doubleTap
 
 	if Contraption ~= nil then
-		PointVal		= Contraption.ACEPoints or ACE_GetEntPoints(ent) or 0
-		PtsArmor = Contraption.ACEPointsPerType.Armor
-		PtsEngine = Contraption.ACEPointsPerType.Engines
-		PtsFirepower = Contraption.ACEPointsPerType.Firepower
-		PtsFuel = Contraption.ACEPointsPerType.Fuel
-		PtsAmmo = Contraption.ACEPointsPerType.Ammo
-		PtsCrew = Contraption.ACEPointsPerType.Crew
-		PtsElectronics = Contraption.ACEPointsPerType.Electronics
+		local pointsPerType = Contraption.ACEPointsPerType or {}
+		PointVal		= safeNumber(Contraption.ACEPoints or ACE_GetEntPoints(ent))
+		PtsArmor = safeNumber(pointsPerType.Armor)
+		PtsEngine = safeNumber(pointsPerType.Engines)
+		PtsFirepower = safeNumber(pointsPerType.Firepower)
+		PtsAmmo = safeNumber(pointsPerType.Ammo)
+		PtsAmmoReady = safeNumber(pointsPerType.AmmoReady)
+		PtsAmmoBackup = safeNumber(pointsPerType.AmmoBackup)
+		AmmoReadyRounds = safeNumber(pointsPerType.AmmoReadyRounds)
+		AmmoBackupRounds = safeNumber(pointsPerType.AmmoBackupRounds)
+		PtsCrew = safeNumber(pointsPerType.Crew)
+		PtsElectronics = safeNumber(pointsPerType.Electronics)
+		ArmorDirty = Contraption.ACEArmorDirty and Contraption.ACEArmorCalculated
+		ArmorInitMissing = not Contraption.ACEArmorCalculated
 	else
-		PointVal = ACE_GetEntPoints(ent)
+		PointVal = safeNumber(ACE_GetEntPoints(ent))
 	end
+
+	local frontArm, sideArm = 0, 0
+	if Contraption ~= nil and Contraption.ACEArmorCalculated then
+		frontArm = safeNumber(Contraption.ACEArmorFront)
+		sideArm = safeNumber(Contraption.ACEArmorSide)
+	elseif Contraption == nil and ACE_GetArmorScan then
+		frontArm, sideArm = ACE_GetArmorScan(ent)
+		frontArm = safeNumber(frontArm)
+		sideArm = safeNumber(sideArm)
+	end
+
+	if doubleTap and ACE_GetArmorScan then
+		local nextAllowed = ply.ACE_ArmorHypoNext or 0
+		if now < nextAllowed then
+			local wait = math.max(0, nextAllowed - now)
+			ply:ChatPrint(string.format("[ACE] Armor preview is on cooldown (%.1fs).", wait))
+		else
+			local scanEnt = ent
+			if Contraption and Contraption.GetACEBaseplate then
+				local base = Contraption:GetACEBaseplate()
+				if IsValid(base) then
+					scanEnt = base
+				end
+			end
+			HypoFront, HypoSide = ACE_GetArmorScan(scanEnt)
+			HypoFront = safeNumber(HypoFront)
+			HypoSide = safeNumber(HypoSide)
+			HypoPts = safeNumber((HypoFront + HypoSide * 2) * 4)
+			HypoUsed = true
+			if ACE_CalcNonArmorPoints and Contraption then
+				local nonArmor, totals, hypoDetails = ACE_CalcNonArmorPoints(Contraption, scanEnt)
+				PointVal = safeNumber(nonArmor + HypoPts)
+				PtsArmor = safeNumber(HypoPts)
+				PtsEngine = safeNumber(totals.Engines)
+				PtsFirepower = safeNumber(totals.Firepower)
+				PtsAmmo = safeNumber(totals.Ammo)
+				PtsAmmoReady = safeNumber(totals.AmmoReady)
+				PtsAmmoBackup = safeNumber(totals.AmmoBackup)
+				AmmoReadyRounds = safeNumber(totals.AmmoReadyRounds)
+				AmmoBackupRounds = safeNumber(totals.AmmoBackupRounds)
+				PtsCrew = safeNumber(totals.Crew)
+				PtsElectronics = safeNumber(totals.Electronics)
+				details = hypoDetails
+			end
+			local cooldown = ACE.ArmorPreviewCooldown or 5
+			ply.ACE_ArmorHypoNext = now + cooldown
+		end
+	end
+
+	if HypoUsed then
+		frontArm = HypoFront
+		sideArm = HypoSide
+	end
+
+	local GeneralTb	= { data.MaterialMass or {}, data.MaterialPercent or {}, details }
+	local ToJSON		= util.TableToJSON( GeneralTb )
+	local Compressed	= util.Compress(ToJSON) or ""
 
 	net.Start("ACE_ArmorSummary")
 		net.WriteFloat(total)
@@ -190,12 +277,25 @@ function TOOL:Reload( trace )
 		net.WriteFloat(PtsArmor)
 		net.WriteFloat(PtsEngine)
 		net.WriteFloat(PtsFirepower)
-		net.WriteFloat(PtsFuel)
 		net.WriteFloat(PtsAmmo)
+		net.WriteFloat(PtsAmmoReady)
+		net.WriteFloat(PtsAmmoBackup)
+		net.WriteFloat(AmmoReadyRounds)
+		net.WriteFloat(AmmoBackupRounds)
 		net.WriteFloat(PtsCrew)
 		net.WriteFloat(PtsElectronics)
+		net.WriteFloat(frontArm)
+		net.WriteFloat(sideArm)
+		net.WriteBool(ArmorDirty)
+		net.WriteBool(ArmorInitMissing)
+		net.WriteBool(HypoRequested)
+		net.WriteBool(HypoUsed)
+		net.WriteFloat(HypoFront)
+		net.WriteFloat(HypoSide)
+		net.WriteFloat(HypoPts)
 
-		net.WriteData(Compressed)
+		net.WriteUInt(#Compressed, 16)
+		net.WriteData(Compressed, #Compressed)
 
 	net.Send(self:GetOwner())
 
@@ -219,7 +319,14 @@ function TOOL:Think()
 
 		local Mat = ent.ACF.Material or "RHA"
 		local MatData =  ACE_GetMaterialData( Mat )
-		local AcePts = ACE_GetEntPoints(ent)
+		local AcePts = 0
+		local cls = ent:GetClass()
+		if cls == "acf_ammo" and ACE_GetAmmoCratePointsForContraption then
+			local con = ent:GetContraption()
+			AcePts = ACE_GetAmmoCratePointsForContraption(ent, con, ent) or 0
+		else
+			AcePts = ACE_GetEntPoints(ent)
+		end
 
 		if not MatData then return end
 
@@ -253,10 +360,10 @@ if CLIENT then
 
 	local getPhrase = language.GetPhrase
 
-	--Required in order to update material data inserted in client convars
+	-- Normalize legacy material values stored in client convars.
 	local function ACE_MaterialCheck( Material )
 
-		--Convert old numeric IDs to the new string IDs
+		-- Map legacy numeric ids to string ids.
 		local BackCompMat = {
 			"RHA",
 			"CHA",
@@ -267,23 +374,23 @@ if CLIENT then
 			"Texto"
 		}
 
-		--Refreshing the data, so we can replace non valid data with the callback.
+		-- If the convar holds a legacy id, replace it with the modern id.
 		if isnumber(tonumber(Material)) then
 
 			local Mat_ID = math.Clamp(Material + 1, 1,7)
 			Material = BackCompMat[Mat_ID]
 
-			--Updates the convar with the proper material
+			-- Write back the normalized material id.
 			RunConsoleCommand( "acfarmorprop_material", Material )
 		end
 	end
 
-	--Looks like client convars are not initialized very quickly, so we will wait a bit until they become valid.
+	-- Delay normalization to allow client convars to initialize.
 	timer.Simple(0.1, function()
 		ACE_MaterialCheck( GetConVar("acfarmorprop_material"):GetString() )
 	end )
 
-	--Replicated from PANEL:CPanelText(Name, Desc, Font). No idea why this doesnt work with this function out of this file
+	-- Helper to add centered help text; mirrors PANEL:CPanelText for this file.
 	local function ArmorPanelText( name, panel, desc, font )
 
 		if not PanelTxt then PanelTxt = {} end
@@ -305,7 +412,7 @@ if CLIENT then
 
 	end
 
-	-- Material ComboBox creation
+	-- Build or refresh the material combo box.
 	local function MaterialTable( panel )
 
 		local MaterialTypes = ACE.ArmorTypes
@@ -323,32 +430,39 @@ if CLIENT then
 			ToolPanel.ComboMat = vgui.Create( "DComboBox" )
 			ToolPanel.ComboMat:SetPos( 5, 30 )
 			ToolPanel.ComboMat:SetSize( 100, 20 )
-			ToolPanel.ComboMat:SetValue( MaterialData.sname )
 			ToolPanel.panel:AddItem(ToolPanel.ComboMat)
+		else
+			ToolPanel.ComboMat:Clear()
+		end
 
-			for _, Mat  in pairs(MaterialTypes) do
-				if ACF.Year >= Mat.year then
-					ToolPanel.ComboMat:AddChoice(Mat.sname, Mat.id )
-				end
+		-- Rebuild the list each time to avoid stale entries.
+		for _, Mat  in pairs(MaterialTypes) do
+			local year = Mat.year or 0
+			if (ACF.Year or 0) >= year then
+				ToolPanel.ComboMat:AddChoice(Mat.sname, Mat.id )
 			end
+		end
 
-			ArmorPanelText( "ComboTitle", ToolPanel.panel, MaterialData.name , "DermaDefaultBold" )
-			ArmorPanelText( "ComboDesc" , ToolPanel.panel, MaterialData.desc .. "\n" )
+		ToolPanel.ComboMat:SetValue( MaterialData.sname )
 
-			ArmorPanelText( "ComboCurve", ToolPanel.panel, getPhrase("tool.acfarmorprop.curve") .. ": " .. MaterialData.curve )
-			ArmorPanelText( "ComboMass" , ToolPanel.panel, getPhrase("tool.acfarmorprop.mass") .. ": " .. MaterialData.massMod .. "x RHA" )
-			ArmorPanelText( "ComboKE"	, ToolPanel.panel, getPhrase("tool.acfarmorprop.keprot") .. ": " .. MaterialData.effectiveness .. "x RHA" )
-			ArmorPanelText( "ComboCHE"  , ToolPanel.panel, getPhrase("tool.acfarmorprop.chemprot") .. ": " .. (MaterialData.HEATeffectiveness or MaterialData.effectiveness) .. "x RHA" )
-			ArmorPanelText( "ComboYear" , ToolPanel.panel, getPhrase("tool.acfarmorprop.year") .. ": " .. (MaterialData.year or "unknown") )
+		ArmorPanelText( "ComboTitle", ToolPanel.panel, MaterialData.name , "DermaDefaultBold" )
+		ArmorPanelText( "ComboDesc" , ToolPanel.panel, MaterialData.desc .. "\n" )
 
-			function ToolPanel.ComboMat:OnSelect(self, _, value )
+		ArmorPanelText( "ComboCurve", ToolPanel.panel, getPhrase("tool.acfarmorprop.curve") .. ": " .. MaterialData.curve )
+		ArmorPanelText( "ComboMass" , ToolPanel.panel, getPhrase("tool.acfarmorprop.mass") .. ": " .. MaterialData.massMod .. "x RHA" )
+		ArmorPanelText( "ComboKE"	, ToolPanel.panel, getPhrase("tool.acfarmorprop.keprot") .. ": " .. MaterialData.effectiveness .. "x RHA" )
+		ArmorPanelText( "ComboCHE"  , ToolPanel.panel, getPhrase("tool.acfarmorprop.chemprot") .. ": " .. (MaterialData.HEATeffectiveness or MaterialData.effectiveness) .. "x RHA" )
+		ArmorPanelText( "ComboYear" , ToolPanel.panel, getPhrase("tool.acfarmorprop.year") .. ": " .. (MaterialData.year or "unknown") )
 
-				RunConsoleCommand( "acfarmorprop_material", value )
-			end
+		function ToolPanel.ComboMat:OnSelect(_, value, data)
+			-- Use provided material id when available; fallback to display value.
+			local matId = tostring(data or value)
+			RunConsoleCommand("acfarmorprop_material", matId)
+			self:SetValue(value)
 		end
 	end
 
-	--Main menu building
+	-- Build the tool control panel.
 	function TOOL.BuildCPanel( panel )
 		local Presets = vgui.Create( "ControlPresets" )
 
@@ -369,13 +483,13 @@ if CLIENT then
 
 	end
 
-	-- clamp thickness if the change in ductility puts mass out of range
-	cvars.RemoveChangeCallback( "acfarmorprop_ductility", "acfarmorprop_ductility" ) -- Reload support
+	-- When ductility changes, adjust thickness to keep mass within bounds.
+	cvars.RemoveChangeCallback( "acfarmorprop_ductility", "acfarmorprop_ductility" ) -- Clear any prior callback so reloads do not stack.
 	cvars.AddChangeCallback( "acfarmorprop_ductility", function( _, _, value )
 
 		local area = GetConVar( "acfarmorprop_area" ):GetFloat()
 
-		-- don't bother recalculating if we don't have a valid ent
+		-- Skip if no valid area has been sampled.
 		if area == 0 then return end
 
 		local ductility = math.Clamp( ( tonumber( value ) or 0 ) / 100, -0.8, 0.8 )
@@ -397,13 +511,13 @@ if CLIENT then
 
 	end, "acfarmorprop_ductility")
 
-	-- clamp ductility if the change in thickness puts mass out of range
+	-- When thickness changes, adjust ductility to keep mass within bounds.
 	cvars.RemoveChangeCallback( "acfarmorprop_thickness", "acfarmorprop_thickness" )
 	cvars.AddChangeCallback( "acfarmorprop_thickness", function( _, _, value )
 
 		local area = GetConVar( "acfarmorprop_area" ):GetFloat()
 
-		-- don't bother recalculating if we don't have a valid ent
+		-- Skip if no valid area has been sampled.
 		if area == 0 then return end
 
 		local thickness = math.Clamp( tonumber( value ) or 0, 0.1, 5000 )
@@ -425,7 +539,7 @@ if CLIENT then
 
 	end, "acfarmorprop_thickness")
 
-	-- Refresh Armor material info on menu
+	-- Update material details when selection changes.
 	cvars.RemoveChangeCallback( "acfarmorprop_material", "acfarmorprop_material" )
 	cvars.AddChangeCallback( "acfarmorprop_material", function( _, _, value )
 
@@ -433,10 +547,10 @@ if CLIENT then
 
 				local MatData = ACE_GetMaterialData( value )
 
-				--Use RHA if the choosen material is invalid or doesnt exist
+				-- Fallback to RHA if the selected material is invalid.
 				if not MatData then RunConsoleCommand( "acfarmorprop_material", "RHA" ) return end
 
-				--Too redundant, ik, but looks like the unique way to have it working even when right clicking a prop
+				-- Ensure the combo box reflects updates triggered from props.
 				ToolPanel.ComboMat:SetText(MatData.sname)
 
 				ArmorPanelText( "ComboTitle", ToolPanel.panel, MatData.name , "DermaDefaultBold" )
@@ -462,7 +576,7 @@ if CLIENT then
 		local phystotal	= math.Round( net.ReadFloat(), 1 )
 		local parenttotal	= math.Round( net.ReadFloat(), 1 )
 		local physratio	= math.Round( net.ReadFloat(), 1 )
-		local power		= net.ReadFloat() -- Note: intentional
+		local power		= net.ReadFloat() -- Preserve precision for hp/ton calculation.
 
 
 		local hpton		= math.Round( power / (total / 1000), 1 )
@@ -471,61 +585,146 @@ if CLIENT then
 		local PtsArmor = math.Round( net.ReadFloat(), 1 )
 		local PtsEngine = math.Round( net.ReadFloat(), 1 )
 		local PtsFirepower = math.Round( net.ReadFloat(), 1 )
-		local PtsFuel = math.Round( net.ReadFloat(), 1 )
 		local PtsAmmo = math.Round( net.ReadFloat(), 1 )
+		local PtsAmmoReady = math.Round( net.ReadFloat(), 1 )
+		local PtsAmmoBackup = math.Round( net.ReadFloat(), 1 )
+		local AmmoReadyRounds = math.Round( net.ReadFloat(), 0 )
+		local AmmoBackupRounds = math.Round( net.ReadFloat(), 0 )
 		local PtsCrew = math.Round( net.ReadFloat(), 1 )
 		local PtsElectronics = math.Round( net.ReadFloat(), 1 )
+		local FrontArm = math.Round( net.ReadFloat(), 2 )
+		local SideArm = math.Round( net.ReadFloat(), 2 )
+		local ArmorDirty = net.ReadBool()
+		local ArmorInitMissing = net.ReadBool()
+		local HypoRequested = net.ReadBool()
+		local HypoUsed = net.ReadBool()
+		net.ReadFloat()
+		net.ReadFloat()
+		net.ReadFloat()
 
-		local Compressed	= net.ReadData(640)
-		local Decompress	= util.Decompress(Compressed)
-		local FromJSON	= util.JSONToTable( Decompress )
+		local compressedLen = net.ReadUInt(16)
+		local Compressed = compressedLen > 0 and net.ReadData(compressedLen) or nil
+		local Decompress = Compressed and util.Decompress(Compressed) or nil
+		local FromJSON = Decompress and util.JSONToTable(Decompress) or nil
 
-		local Sep = "\n"
+	local Sep = "\n"
 
-		local Tabletxt	= {}
+	local Tabletxt	= {}
 
-		local PTBreakdownHeader		= { Color2, "<|",Color1, "|============|", Color2, "[- Cost Breakdown -]", Color1, "|============|",Color2, "|>" .. Sep }
+	local function formatAmmoLines(lines)
+		if not istable(lines) then return {} end
+
+		local entries = {}
+		for _, entry in ipairs(lines) do
+			local count = tonumber(entry.Count or entry.count or 0) or 0
+			if count > 0 then
+				entries[#entries + 1] = {
+					count = math.floor(count + 0.5),
+					caliber = tonumber(entry.Caliber or entry.caliber or 0) or 0,
+					atype = tostring(entry.Type or entry.type or "Ammo"),
+					state = tostring(entry.State or entry.state or "")
+				}
+			end
+		end
+
+		table.sort(entries, function(a, b)
+			if a.caliber == b.caliber then
+				if a.atype == b.atype then
+					if a.state == b.state then
+						return a.count > b.count
+					end
+					return a.state == "READY"
+				end
+				return a.atype < b.atype
+			end
+			return a.caliber > b.caliber
+		end)
+
+		local formatted = {}
+		for _, entry in ipairs(entries) do
+			local calText = entry.caliber > 0 and string.format("%dmm", entry.caliber) or "0mm"
+			formatted[#formatted + 1] = string.format("%dx%s %s %s", entry.count, calText, entry.atype, entry.state)
+		end
+
+		return formatted
+	end
+
+	local function pct(part, total)
+		if total <= 0 then return 0 end
+		return math.Round(part / total * 100, 0)
+	end
+
+	local PTBreakdownHeader		= { Color2, "<|",Color1, "|============|", Color2, "[- Cost Breakdown -]", Color1, "|============|",Color2, "|>" .. Sep }
 
 
 		local Title		= { Color2, "<|",Color1, "|============|", Color2, "[- Contraption Summary -]", Color1, "|============|",Color2, "|>" .. Sep }
-		--local ArmorComp1	= { Color4, "- Armor composition: " .. Sep }
 		local TMass2		= { Color4, "-Mass Ratio: ",Color3, "" .. phystotal .. "kg", Color4, " physical, ", Color3, "" .. parenttotal .. "kg", Color4, " parented / ", Color3, physratio .. "%", Color4, " physical )" .. Sep }
 
-		local Engine		= { Color4, "-Total Power: ", Color3, "" .. math.Round(power, 1), Color4," hp -> ",Color3, "" .. hpton, Color4, " hp/ton" .. Sep }
+	local Engine		= { Color4, "-Total Power: ", Color3, "" .. math.Round(power, 1), Color4," hp -> ",Color3, "" .. hpton, Color4, " hp/ton" .. Sep }
 
+		local Details = FromJSON and FromJSON[3] or nil
+		local ammoLines = formatAmmoLines(Details and Details.AmmoLines)
 
-		--PointVal
-
-		Tabletxt = table.Add(Tabletxt, PTBreakdownHeader)
-
-		local TPoints = {}
-		if PointVal > ACF.PointsLimit then
-			local OverPoints = PointVal - ACF.PointsLimit
-			TPoints		= { Color4, "Total Cost: ", Color1, "" .. PointVal .. "pts", Color2, "  -  ", Color1, OverPoints .. " pts over" .. Sep }
+		local showBreakdown = not (ArmorInitMissing and not HypoUsed)
+		if not showBreakdown then
+			if not HypoRequested then
+				table.Add(Tabletxt, {
+					Color1,
+					"[!] ARMOR COST NOT INITIALIZED. ",
+					Color2,
+					"Unfreeze or enter vehicle. Double-tap R to preview." .. Sep
+				})
+			end
 		else
-			TPoints		= { Color4, "Total Cost: ", Color3, "" .. PointVal .. "pts" .. Sep }
-		end
-		table.Add(Tabletxt,TPoints)
+			Tabletxt = table.Add(Tabletxt, PTBreakdownHeader)
+			if HypoUsed then
+				table.Add(Tabletxt, { Color2, "[i] Preview mode (no points applied). Respawn to apply." .. Sep })
+			end
 
-		local FractionalPts = "/" .. PointVal
-		table.Add(Tabletxt,{ Color4, "Armor: "})
-		table.Add(Tabletxt,{ Color3, "(" .. math.Round(PtsArmor / PointVal * 100,0) .. "%) - " .. PtsArmor .. FractionalPts ..  Sep})
-		table.Add(Tabletxt,{ Color4, "Engines: "})
-		table.Add(Tabletxt,{ Color3, "(" .. math.Round(PtsEngine / PointVal * 100,0) .. "%) - " .. PtsEngine .. FractionalPts ..  Sep})
-		table.Add(Tabletxt,{ Color4, "Firepower: "})
-		table.Add(Tabletxt,{ Color3, "(" .. math.Round(PtsFirepower / PointVal * 100,0) .. "%) - " .. PtsFirepower .. FractionalPts ..  Sep})
-		table.Add(Tabletxt,{ Color4, "Fuel: "})
-		table.Add(Tabletxt,{ Color3, "(" .. math.Round(PtsFuel / PointVal * 100,0) .. "%) - " .. PtsFuel .. FractionalPts ..  Sep})
-		table.Add(Tabletxt,{ Color4, "Ammo: "})
-		table.Add(Tabletxt,{ Color3, "(" .. math.Round(PtsAmmo / PointVal * 100,0) .. "%) - " .. PtsAmmo .. FractionalPts ..  Sep})
-		table.Add(Tabletxt,{ Color4, "Crew: "})
-		table.Add(Tabletxt,{ Color3, "(" .. math.Round(PtsCrew / PointVal * 100,0) .. "%) - " .. PtsCrew .. FractionalPts ..  Sep})
-		table.Add(Tabletxt,{ Color4, "Electronics: "})
-		table.Add(Tabletxt,{ Color3, "(" .. math.Round(PtsElectronics / PointVal * 100,0) .. "%) - " .. PtsElectronics .. FractionalPts .. Sep})
+			local TPoints = {}
+			local totalLabel = HypoUsed and "Total Cost (preview): " or "Total Cost: "
+			if PointVal > ACF.PointsLimit then
+				local OverPoints = PointVal - ACF.PointsLimit
+				TPoints		= { Color4, totalLabel, Color1, "" .. PointVal .. "pts", Color2, "  -  ", Color1, OverPoints .. " pts over" .. Sep }
+			else
+				TPoints		= { Color4, totalLabel, Color3, "" .. PointVal .. "pts" .. Sep }
+			end
+			table.Add(Tabletxt,TPoints)
+			if ArmorDirty then
+				table.Add(Tabletxt, { Color1, "[!] Armor cost dirty; respawn to recalc." .. Sep })
+			elseif ArmorInitMissing and not HypoUsed then
+				table.Add(Tabletxt, { Color1, "[!] ARMOR COST NOT INITIALIZED. ", Color2, "Unfreeze or enter vehicle." .. Sep })
+			end
+
+			local FractionalPts = "/" .. PointVal
+			table.Add(Tabletxt, { Color4, "Armor scan: ", Color3, string.format("front=%.2fmm  side=%.2fmm", FrontArm, SideArm) .. Sep })
+			table.Add(Tabletxt, { Color4, "Armor: ", Color3, "(" .. pct(PtsArmor, PointVal) .. "%) - " .. PtsArmor .. FractionalPts .. Sep })
+			table.Add(Tabletxt, { Color4, "Engines: ", Color3, "(" .. pct(PtsEngine, PointVal) .. "%) - " .. PtsEngine .. FractionalPts .. Sep })
+			if PtsFirepower > 0 then
+				table.Add(Tabletxt, { Color4, "Firepower: ", Color3, "(" .. pct(PtsFirepower, PointVal) .. "%) - " .. PtsFirepower .. FractionalPts .. Sep })
+			end
+			if PtsAmmo > 0 or #ammoLines > 0 or PtsAmmoReady > 0 or PtsAmmoBackup > 0 then
+				table.Add(Tabletxt, { Color4, "Ammo: ", Color3, "(" .. pct(PtsAmmo, PointVal) .. "%) - " .. PtsAmmo .. FractionalPts .. Sep })
+				if #ammoLines > 0 then
+					for _, line in ipairs(ammoLines) do
+						table.Add(Tabletxt, { Color3, "    " .. line .. Sep })
+					end
+				else
+					if AmmoReadyRounds > 0 then
+						table.Add(Tabletxt, { Color3, "    " .. AmmoReadyRounds .. " rds READY" .. Sep })
+					end
+					if AmmoBackupRounds > 0 then
+						table.Add(Tabletxt, { Color3, "    " .. AmmoBackupRounds .. " rds BACKUP" .. Sep })
+					end
+				end
+			end
+			table.Add(Tabletxt, { Color4, "Crew: ", Color3, "(" .. pct(PtsCrew, PointVal) .. "%) - " .. PtsCrew .. FractionalPts .. Sep })
+			table.Add(Tabletxt, { Color4, "Electronics: ", Color3, "(" .. pct(PtsElectronics, PointVal) .. "%) - " .. PtsElectronics .. FractionalPts .. Sep })
+		end
+
 
 		Tabletxt = table.Add(Tabletxt, Title)
 		Tabletxt = table.Add(Tabletxt,TMass2)
-		--Tabletxt = table.Add(Tabletxt,ArmorComp1)
 
 
 		local Count = 0
@@ -653,10 +852,10 @@ if CLIENT then
 			surface.DrawTexturedRect( 0, 0, 256, 256 )
 			surface.SetFont( "Torchfont" )
 
-			-- header
+			-- Screen title.
 			draw.SimpleTextOutlined( "#tool.acfarmorprop.armorinfo", "Torchfont", 128, 30, Color( 224, 224, 255, 255 ), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER, 4, color_black )
 
-			-- armor bar
+			-- Armor progress bar.
 			draw.RoundedBox( 6, 10, 83, 236, 64, Color( 200, 200, 200, 255 ) )
 			if Armour ~= 0 and MaxArmour ~= 0 then
 				draw.RoundedBox( 6, 15, 88, Armour / MaxArmour * 226, 54, Color( 0, 0, 200, 255 ) )
@@ -665,7 +864,7 @@ if CLIENT then
 			draw.SimpleTextOutlined( "#tool.acfarmorprop.armor", "Torchfont", 128, 100, Color( 224, 224, 255, 255 ), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER, 4, color_black )
 			draw.SimpleTextOutlined( ArmourTxt, "Torchfont", 128, 130, Color( 224, 224, 255, 255 ), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER, 4, color_black )
 
-			-- health bar
+			-- Health progress bar.
 			draw.RoundedBox( 6, 10, 183, 236, 64, Color( 200, 200, 200, 255 ) )
 			if Health ~= 0 and MaxHealth ~= 0 then
 				draw.RoundedBox( 6, 15, 188, Health / MaxHealth * 226, 54, Color( 200, 0, 0, 255 ) )
