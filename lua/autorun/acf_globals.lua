@@ -134,6 +134,7 @@ ACF.MaxWeight = 200000 --The max weight in Kg
 
 ACE.CannonPointMul = 0.85 --Multiplier for cannon point cost
 ACE.EnginePointMul = 0.69 --Multiplier for engine cost in points
+ACF.PointsPerTon   = ACF.PointsPerTon or 42 -- Legacy cost per ton for the Manufacturing Cost indicator.
 ACE.AmmoPerTon     = 100 --Point cost per ton of ammo
 
 -- Deprecated: armor mass-based cost has been replaced by LOS armor scan.
@@ -150,8 +151,8 @@ ACE.AmmoTypeFactors = ACE.AmmoTypeFactors or {
     THEAT = 0.95,
     THEATFS = 1.0,
     HESH = 0.4,
-    HE = 0.5,
-    HEFS = 0.6,
+    HE = 1.5,
+    HEFS = 1.8,
     HP = 0.1,
     CAP = 0.6,
     CHEAT = 0.8,
@@ -165,6 +166,17 @@ ACE.AmmoTypeFactors = ACE.AmmoTypeFactors or {
     Refill = 0
 }
 
+
+
+ACE.LegacyMatCostTables = ACE.LegacyMatCostTables or {
+    Alum = 1.2 * (0.221 / 0.34), -- 20% cost increase for ~25% weight reduction.
+    CHA = 0.8 * (0.98 / 1.25), -- 25% heavier for ~20% cost reduction.
+    Cer = 1.4 * (2.05 / 1.4), -- 50% more protection/kg for ~40% cost increase.
+    ERA = 2.0 * (2.5 / 2.0),
+    Rub = 1.5 * (0.05 / 0.2),
+    Texto = 1.4 * (0.5 / 0.35),
+    RHA = 1
+}
 ACE.AmmoCostConfig = ACE.AmmoCostConfig or {
     BaseRoundPts = 80, -- Base points per round before scaling.
     RefPen = 600, -- Reference penetration (mm) for pen scaling.
@@ -180,7 +192,7 @@ ACE.AmmoCostConfig = ACE.AmmoCostConfig or {
     ReadyRackMax = 200, -- Maximum ready rounds per gun group.
     ReadyRackPivot = 60, -- Caliber (mm) where low-caliber boost stops.
     ReadyRackLowBoost = 0.5, -- Boost factor applied below pivot (0.5 = +50%).
-    StowFactor = 0.35, -- Cost multiplier for stowed rounds.
+    StowFactor = 0.0, -- Cost multiplier for stowed rounds.
     TailFactor = 0, -- Extra discount per round beyond tail start (0 disables).
     TailStartMultiplier = 2 -- Tail start = readyCap * multiplier.
 }
@@ -404,6 +416,7 @@ elseif CLIENT then
     CreateClientConVar( "acf_sens_scopes", 0.2, true, false, "Reduce mouse sensitivity by this amount when zoomed in with scopes on ACE SWEPs.", 0.01, 1)
     CreateClientConVar( "acf_tinnitus", 1, true, false, "Allows the ear tinnitus effect to be applied when an explosive was detonated too close to your position, improving the inmersion during combat.", 0, 1 )
     CreateClientConVar( "acf_sound_volume", 100, true, false, "Adjusts the volume of explosions and gunshots.", 0, 100 )
+    CreateClientConVar( "acf_armor_readout_full", 1, true, false, "Show full armor readout in the ACF armor tool.", 0, 1 )
 
 end
 

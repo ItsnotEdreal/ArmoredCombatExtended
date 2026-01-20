@@ -128,6 +128,7 @@ do
 	-- Allow read-only armor inspection even when CanTool would block edits.
 	ACE_OldHookCall = ACE_OldHookCall or hook.Call
 
+	-- Armor tool hook override for safe reloads.
 	function hook.Call(Name, Gamemode, Player, Entity, Tool, ...)
 		if Name == "CanTool" and Tool == "acfarmorprop" and Player:KeyPressed(IN_RELOAD) then
 			return true
@@ -152,6 +153,7 @@ function TOOL:Reload( trace )
 	local doubleTap = (now - lastReload) <= doubleTapWindow
 	ply.ACE_ArmorReloadLast = now
 
+	-- Coerce numeric values and guard NaN/inf.
 	local function safeNumber(value)
 		value = tonumber(value) or 0
 		if value ~= value or value == math.huge or value == -math.huge then
@@ -190,6 +192,7 @@ function TOOL:Reload( trace )
 	local HypoSide = 0
 	local HypoPts = 0
 	local HypoRequested = doubleTap
+	local LegacyCost = 0
 
 	if Contraption ~= nil then
 		local pointsPerType = Contraption.ACEPointsPerType or {}
@@ -208,6 +211,12 @@ function TOOL:Reload( trace )
 		ArmorInitMissing = not Contraption.ACEArmorCalculated
 	else
 		PointVal = safeNumber(ACE_GetEntPoints(ent))
+	end
+
+	if Contraption ~= nil then
+		LegacyCost = safeNumber(ACE_CalcContraptionLegacyCost and ACE_CalcContraptionLegacyCost(Contraption, ent) or 0)
+	else
+		LegacyCost = safeNumber(ACE_GetEntLegacyCost and ACE_GetEntLegacyCost(ent) or 0)
 	end
 
 	local frontArm, sideArm = 0, 0
@@ -273,6 +282,7 @@ function TOOL:Reload( trace )
 		net.WriteFloat(parenttotal)
 		net.WriteFloat(physratio)
 		net.WriteFloat(power)
+		net.WriteFloat(LegacyCost)
 		net.WriteFloat(PointVal)
 		net.WriteFloat(PtsArmor)
 		net.WriteFloat(PtsEngine)
@@ -301,8 +311,151 @@ function TOOL:Reload( trace )
 
 end
 
-function TOOL:Think()
 
+-- Popup point label helpers.
+local ArmorPointClasses = {
+	prop_physics = true,
+	primitive_shape = true,
+	primitive_airfoil = true,
+	primitive_rail_slider = true,
+	primitive_slider = true,
+	primitive_ladder = true
+}
+
+local PointClassToType = {
+	acf_engine = "Engines",
+	acf_gearbox = "Engines",
+	acf_fueltank = "Ignore",
+	acf_ammo = "Ammo",
+	acf_gun = "Firepower",
+	acf_rack = "Firepower",
+	ace_crewseat_gunner = "Crew",
+	ace_crewseat_loader = "Crew",
+	ace_crewseat_driver = "Crew",
+	ace_rwr_dir = "Electronics",
+	ace_rwr_sphere = "Electronics",
+	acf_missileradar = "Electronics",
+	acf_opticalcomputer = "Electronics",
+	ace_ecm = "Electronics",
+	ace_trackingradar = "Electronics",
+	ace_searchradar = "Electronics",
+	ace_irst = "Electronics",
+	ace_sonar = "Electronics",
+	ace_gforce_meter = "Electronics",
+	ace_vheat_source = "Electronics",
+	ace_wind_sensor = "Electronics"
+}
+
+-- Resolve ammo caliber in millimeters.
+local function ACE_GetAmmoCaliberMm(bdata)
+	if not bdata then return 0 end
+
+	local best = math.max(
+		bdata.Caliber or 0,
+		bdata.SlugCaliber or 0,
+		bdata.SlugCaliber2 or 0,
+		bdata.JetCaliber or 0
+	)
+
+	if best <= 0 and bdata.Id then
+		best = ACF_GetGunValue(bdata.Id, "caliber") or 0
+	end
+
+	return best * 10
+end
+
+-- Resolve gun caliber in millimeters.
+local function ACE_GetGunCaliberMm(ent)
+	if not IsValid(ent) then return 0 end
+
+	local cal = ent.Caliber or 0
+	if cal <= 0 and ent.Id then
+		cal = ACF_GetGunValue(ent.Id, "caliber") or 0
+	end
+
+	return cal * 10
+end
+
+-- Sum ammo points for a given caliber.
+local function ACE_GetAmmoCostForCaliber(con, caliberMm)
+	if not con or not con.ents or caliberMm <= 0 then return 0 end
+
+	local target = math.floor(caliberMm + 0.5)
+	local total = 0
+	-- Sum ammo crate points that match the gun caliber.
+
+	for ent in pairs(con.ents) do
+		if IsValid(ent) and ent:GetClass() == "acf_ammo" then
+			local cal = ACE_GetAmmoCaliberMm(ent.BulletData)
+			if cal > 0 and math.floor(cal + 0.5) == target then
+				total = total + (ACE_GetAmmoCratePointsForContraption(ent, con, ent) or 0)
+			end
+		end
+	end
+
+	return total
+end
+
+-- Resolve point category for a class.
+local function ACE_GetPointsCategory(ent)
+	if not IsValid(ent) then return nil end
+
+	local cls = ent:GetClass()
+	if ArmorPointClasses[cls] then return "Armor" end
+
+	return PointClassToType[cls]
+end
+
+-- Compute popup points and label for an entity.
+-- Order: entity points, gun-caliber ammo total, then category total.
+local function ACE_GetPopupPoints(ent)
+	if not IsValid(ent) then return 0, "Entity Cost" end
+
+	local cls = ent:GetClass()
+	local points = 0
+
+	if cls == "acf_ammo" and ACE_GetAmmoCratePointsForContraption then
+		local con = ent:GetContraption()
+		points = ACE_GetAmmoCratePointsForContraption(ent, con, ent) or 0
+	elseif ACE_GetEntPoints then
+		points = ACE_GetEntPoints(ent) or 0
+	end
+
+	local label = "Entity Cost"
+	if points ~= 0 then return points, label end
+
+	local con = ent:GetContraption()
+
+	-- Guns fall back to the ammo cost for their own caliber.
+	if cls == "acf_gun" then
+		local gunCal = ACE_GetGunCaliberMm(ent)
+		local ammoCost = ACE_GetAmmoCostForCaliber(con, gunCal)
+		if ammoCost > 0 then
+			points = ammoCost
+			if gunCal > 0 then
+				label = string.format("Total Ammo Cost (%dmm)", math.floor(gunCal + 0.5))
+			else
+				label = "Total Ammo Cost"
+			end
+
+			return points, label
+		end
+	end
+
+	local pointsPerType = con and con.ACEPointsPerType or nil
+	local category = pointsPerType and ACE_GetPointsCategory(ent) or nil
+	local categoryPts = category and pointsPerType[category] or 0
+	categoryPts = tonumber(categoryPts) or 0
+	if categoryPts > 0 then
+		points = categoryPts
+		label = "Total " .. category .. " Cost"
+	end
+
+	return points, label
+end
+
+-- Update hover popup data for the active tool.
+function TOOL:Think()
 	if CLIENT then return end
 
 	local ply	= self:GetOwner()
@@ -318,15 +471,8 @@ function TOOL:Think()
 	if ACF_Check( ent ) then
 
 		local Mat = ent.ACF.Material or "RHA"
-		local MatData =  ACE_GetMaterialData( Mat )
-		local AcePts = 0
-		local cls = ent:GetClass()
-		if cls == "acf_ammo" and ACE_GetAmmoCratePointsForContraption then
-			local con = ent:GetContraption()
-			AcePts = ACE_GetAmmoCratePointsForContraption(ent, con, ent) or 0
-		else
-			AcePts = ACE_GetEntPoints(ent)
-		end
+		local MatData = ACE_GetMaterialData( Mat )
+		local AcePts, pointsLabel = ACE_GetPopupPoints(ent)
 
 		if not MatData then return end
 
@@ -337,7 +483,9 @@ function TOOL:Think()
 		self.Weapon:SetNWFloat( "MaxHP", ent.ACF.MaxHealth )
 		self.Weapon:SetNWFloat( "MaxArmour", ent.ACF.MaxArmour )
 		self.Weapon:SetNWString( "Material", MatData.sname or "RHA")
+		self.Weapon:SetNWString( "PointCostLabel", pointsLabel )
 		self.Weapon:SetNWFloat( "PointCost", AcePts )
+		self.Weapon:SetNWFloat( "CostValue", ACE_GetEntLegacyCost and ACE_GetEntLegacyCost(ent) or 0 )
 
 	else
 
@@ -348,7 +496,9 @@ function TOOL:Think()
 		self.Weapon:SetNWFloat( "MaxHP", 0 )
 		self.Weapon:SetNWFloat( "MaxArmour", 0 )
 		self.Weapon:SetNWString( "Material", "RHA" )
+		self.Weapon:SetNWString( "PointCostLabel", "Entity Cost" )
 		self.Weapon:SetNWFloat( "PointCost", 0 )
+		self.Weapon:SetNWFloat( "CostValue", 0 )
 	end
 
 	self.AimEntity = ent
@@ -454,6 +604,7 @@ if CLIENT then
 		ArmorPanelText( "ComboCHE"  , ToolPanel.panel, getPhrase("tool.acfarmorprop.chemprot") .. ": " .. (MaterialData.HEATeffectiveness or MaterialData.effectiveness) .. "x RHA" )
 		ArmorPanelText( "ComboYear" , ToolPanel.panel, getPhrase("tool.acfarmorprop.year") .. ": " .. (MaterialData.year or "unknown") )
 
+		-- Update material selection from UI.
 		function ToolPanel.ComboMat:OnSelect(_, value, data)
 			-- Use provided material id when available; fallback to display value.
 			local matId = tostring(data or value)
@@ -478,6 +629,9 @@ if CLIENT then
 
 		panel:NumSlider( "#tool.acfarmorprop.ductility", "acfarmorprop_ductility", -80, 80 )
 		panel:ControlHelp( "#tool.acfarmorprop.ductilitydesc" )
+
+		panel:CheckBox( "Show full points readout", "acf_armor_readout_full" )
+		panel:ControlHelp( "Toggle the extended points readout shown on reload." )
 
 		MaterialTable(panel)
 
@@ -577,6 +731,8 @@ if CLIENT then
 		local parenttotal	= math.Round( net.ReadFloat(), 1 )
 		local physratio	= math.Round( net.ReadFloat(), 1 )
 		local power		= net.ReadFloat() -- Preserve precision for hp/ton calculation.
+		local LegacyCost	= math.Round( net.ReadFloat(), 1 )
+		local CostDisplay	= math.Round( LegacyCost * 100, 0 )
 
 
 		local hpton		= math.Round( power / (total / 1000), 1 )
@@ -589,7 +745,7 @@ if CLIENT then
 		local PtsAmmoReady = math.Round( net.ReadFloat(), 1 )
 		local PtsAmmoBackup = math.Round( net.ReadFloat(), 1 )
 		local AmmoReadyRounds = math.Round( net.ReadFloat(), 0 )
-		local AmmoBackupRounds = math.Round( net.ReadFloat(), 0 )
+		local _ = math.Round( net.ReadFloat(), 0 )
 		local PtsCrew = math.Round( net.ReadFloat(), 1 )
 		local PtsElectronics = math.Round( net.ReadFloat(), 1 )
 		local FrontArm = math.Round( net.ReadFloat(), 2 )
@@ -611,18 +767,25 @@ if CLIENT then
 
 	local Tabletxt	= {}
 
+	-- Format ammo line items for the readout.
 	local function formatAmmoLines(lines)
 		if not istable(lines) then return {} end
+
+		local hideBackup = false
+		if ACE and ACE.AmmoCostConfig then
+			hideBackup = (tonumber(ACE.AmmoCostConfig.StowFactor) or 0) == 0
+		end
 
 		local entries = {}
 		for _, entry in ipairs(lines) do
 			local count = tonumber(entry.Count or entry.count or 0) or 0
-			if count > 0 then
+			local state = tostring(entry.State or entry.state or "")
+			if not (hideBackup and state == "BACKUP") and count > 0 then
 				entries[#entries + 1] = {
 					count = math.floor(count + 0.5),
 					caliber = tonumber(entry.Caliber or entry.caliber or 0) or 0,
 					atype = tostring(entry.Type or entry.type or "Ammo"),
-					state = tostring(entry.State or entry.state or "")
+					state = state
 				}
 			end
 		end
@@ -649,91 +812,134 @@ if CLIENT then
 		return formatted
 	end
 
+	-- Percent helper for readout lines.
 	local function pct(part, total)
 		if total <= 0 then return 0 end
 		return math.Round(part / total * 100, 0)
 	end
 
-	local PTBreakdownHeader		= { Color2, "<|",Color1, "|============|", Color2, "[- Cost Breakdown -]", Color1, "|============|",Color2, "|>" .. Sep }
+	-- Prebuild readout labels and summary rows.
+	local PTBreakdownHeader = { Color2, "<|", Color1, "|============|", Color2, "[- Cost Breakdown -]", Color1, "|============|", Color2, "|>" .. Sep }
 
+	local Title = { Color2, "<|", Color1, "|============|", Color2, "[- Contraption Summary -]", Color1, "|============|", Color2, "|>" .. Sep }
+	local SummaryPoints
+	if PointVal > ACF.PointsLimit then
+		local OverPoints = PointVal - ACF.PointsLimit
+		SummaryPoints = { Color4, "-Points Cost: ", Color1, "" .. PointVal .. "pts", Color2, "  -  ", Color1, OverPoints .. " pts over" .. Sep }
+	else
+		SummaryPoints = { Color4, "-Points Cost: ", Color3, "" .. PointVal .. "pts" .. Sep }
+	end
 
-		local Title		= { Color2, "<|",Color1, "|============|", Color2, "[- Contraption Summary -]", Color1, "|============|",Color2, "|>" .. Sep }
-		local TMass2		= { Color4, "-Mass Ratio: ",Color3, "" .. phystotal .. "kg", Color4, " physical, ", Color3, "" .. parenttotal .. "kg", Color4, " parented / ", Color3, physratio .. "%", Color4, " physical )" .. Sep }
+	local SummaryCost = { Color4, "-Manufacturing Cost: ", Color3, "$" .. CostDisplay .. Sep }
+	local TMass2 = {
+		Color4, "-Mass Ratio: ", Color3, "" .. phystotal .. "kg",
+		Color4, " physical, ", Color3, "" .. parenttotal .. "kg",
+		Color4, " parented / ", Color3, physratio .. "%", Color4, " physical )" .. Sep
+	}
 
-	local Engine		= { Color4, "-Total Power: ", Color3, "" .. math.Round(power, 1), Color4," hp -> ",Color3, "" .. hpton, Color4, " hp/ton" .. Sep }
+	local Engine = {
+		Color4, "-Total Power: ", Color3, "" .. math.Round(power, 1),
+		Color4, " hp -> ", Color3, "" .. hpton, Color4, " hp/ton" .. Sep
+	}
 
-		local Details = FromJSON and FromJSON[3] or nil
-		local ammoLines = formatAmmoLines(Details and Details.AmmoLines)
+	local Details = FromJSON and FromJSON[3] or nil
+	local ammoLines = formatAmmoLines(Details and Details.AmmoLines)
 
-		local showBreakdown = not (ArmorInitMissing and not HypoUsed)
-		if not showBreakdown then
-			if not HypoRequested then
-				table.Add(Tabletxt, {
-					Color1,
-					"[!] ARMOR COST NOT INITIALIZED. ",
-					Color2,
-					"Unfreeze or enter vehicle. Double-tap R to preview." .. Sep
-				})
-			end
-		else
-			Tabletxt = table.Add(Tabletxt, PTBreakdownHeader)
-			if HypoUsed then
-				table.Add(Tabletxt, { Color2, "[i] Preview mode (no points applied). Respawn to apply." .. Sep })
-			end
+	-- Full readout is optional; collapsed mode only shows warnings and cost.
+	local showBreakdown = not (ArmorInitMissing and not HypoUsed)
+	local fullReadout = true
+	local fullReadoutCvar = GetConVar( "acf_armor_readout_full" )
+	if fullReadoutCvar then
+		fullReadout = fullReadoutCvar:GetBool()
+	end
 
-			local TPoints = {}
-			local totalLabel = HypoUsed and "Total Cost (preview): " or "Total Cost: "
-			if PointVal > ACF.PointsLimit then
-				local OverPoints = PointVal - ACF.PointsLimit
-				TPoints		= { Color4, totalLabel, Color1, "" .. PointVal .. "pts", Color2, "  -  ", Color1, OverPoints .. " pts over" .. Sep }
-			else
-				TPoints		= { Color4, totalLabel, Color3, "" .. PointVal .. "pts" .. Sep }
-			end
-			table.Add(Tabletxt,TPoints)
-			if ArmorDirty then
-				table.Add(Tabletxt, { Color1, "[!] Armor cost dirty; respawn to recalc." .. Sep })
-			elseif ArmorInitMissing and not HypoUsed then
-				table.Add(Tabletxt, { Color1, "[!] ARMOR COST NOT INITIALIZED. ", Color2, "Unfreeze or enter vehicle." .. Sep })
-			end
-
-			local FractionalPts = "/" .. PointVal
-			table.Add(Tabletxt, { Color4, "Armor scan: ", Color3, string.format("front=%.2fmm  side=%.2fmm", FrontArm, SideArm) .. Sep })
-			table.Add(Tabletxt, { Color4, "Armor: ", Color3, "(" .. pct(PtsArmor, PointVal) .. "%) - " .. PtsArmor .. FractionalPts .. Sep })
-			table.Add(Tabletxt, { Color4, "Engines: ", Color3, "(" .. pct(PtsEngine, PointVal) .. "%) - " .. PtsEngine .. FractionalPts .. Sep })
-			if PtsFirepower > 0 then
-				table.Add(Tabletxt, { Color4, "Firepower: ", Color3, "(" .. pct(PtsFirepower, PointVal) .. "%) - " .. PtsFirepower .. FractionalPts .. Sep })
-			end
-			if PtsAmmo > 0 or #ammoLines > 0 or PtsAmmoReady > 0 or PtsAmmoBackup > 0 then
-				table.Add(Tabletxt, { Color4, "Ammo: ", Color3, "(" .. pct(PtsAmmo, PointVal) .. "%) - " .. PtsAmmo .. FractionalPts .. Sep })
-				if #ammoLines > 0 then
-					for _, line in ipairs(ammoLines) do
-						table.Add(Tabletxt, { Color3, "    " .. line .. Sep })
-					end
-				else
-					if AmmoReadyRounds > 0 then
-						table.Add(Tabletxt, { Color3, "    " .. AmmoReadyRounds .. " rds READY" .. Sep })
-					end
-					if AmmoBackupRounds > 0 then
-						table.Add(Tabletxt, { Color3, "    " .. AmmoBackupRounds .. " rds BACKUP" .. Sep })
-					end
-				end
-			end
-			table.Add(Tabletxt, { Color4, "Crew: ", Color3, "(" .. pct(PtsCrew, PointVal) .. "%) - " .. PtsCrew .. FractionalPts .. Sep })
-			table.Add(Tabletxt, { Color4, "Electronics: ", Color3, "(" .. pct(PtsElectronics, PointVal) .. "%) - " .. PtsElectronics .. FractionalPts .. Sep })
+	if not fullReadout then
+		showBreakdown = false
+	end
+	-- Condensed mode shows warnings and core totals only.
+	if not showBreakdown then
+		if ArmorDirty then
+			table.Add(Tabletxt, { Color1, "[!] Armor cost dirty; respawn to recalc." .. Sep })
+		elseif ArmorInitMissing and not HypoUsed and not HypoRequested then
+			table.Add(Tabletxt, {
+				Color1,
+				"[!] ARMOR COST NOT INITIALIZED. ",
+				Color2,
+				"Unfreeze or enter vehicle. Double-tap R to preview." .. Sep
+			})
+		end
+		if fullReadout then
+			table.Add(Tabletxt, { Color4, "Manufacturing Cost: ", Color3, "$" .. CostDisplay .. Sep })
+		end
+	else
+		Tabletxt = table.Add(Tabletxt, PTBreakdownHeader)
+		if HypoUsed then
+			table.Add(Tabletxt, { Color2, "[i] Preview mode (no points applied). Respawn to apply." .. Sep })
 		end
 
+		local TPoints = {}
+		local totalLabel = HypoUsed and "Points Cost (preview): " or "Points Cost: "
+		if PointVal > ACF.PointsLimit then
+			local OverPoints = PointVal - ACF.PointsLimit
+			TPoints = {
+				Color4, totalLabel, Color1, "" .. PointVal .. "pts",
+				Color2, "  -  ", Color1, OverPoints .. " pts over" .. Sep
+			}
+		else
+			TPoints = { Color4, totalLabel, Color3, "" .. PointVal .. "pts" .. Sep }
+		end
+		table.Add(Tabletxt, TPoints)
+		table.Add(Tabletxt, { Color4, "Manufacturing Cost: ", Color3, "$" .. CostDisplay .. Sep })
+		if ArmorDirty then
+			table.Add(Tabletxt, { Color1, "[!] Armor cost dirty; respawn to recalc." .. Sep })
+		elseif ArmorInitMissing and not HypoUsed then
+			table.Add(Tabletxt, { Color1, "[!] ARMOR COST NOT INITIALIZED. ", Color2, "Unfreeze or enter vehicle." .. Sep })
+		end
 
-		Tabletxt = table.Add(Tabletxt, Title)
-		Tabletxt = table.Add(Tabletxt,TMass2)
+		local FractionalPts = "/" .. PointVal
+		table.Add(Tabletxt, {
+			Color4, "Armor scan: ", Color3, string.format("front=%.2fmm  side=%.2fmm", FrontArm, SideArm) .. Sep
+		})
+		table.Add(Tabletxt, { Color4, "Armor: ", Color3, "(" .. pct(PtsArmor, PointVal) .. "%) - ", PtsArmor .. FractionalPts .. Sep })
+		table.Add(Tabletxt, { Color4, "Engines: ", Color3, "(" .. pct(PtsEngine, PointVal) .. "%) - ", PtsEngine .. FractionalPts .. Sep })
+		if PtsFirepower > 0 then
+			table.Add(Tabletxt, {
+				Color4, "Firepower: ", Color3,
+				"(" .. pct(PtsFirepower, PointVal) .. "%) - ", PtsFirepower .. FractionalPts .. Sep
+			})
+		end
+		if PtsAmmo > 0 or #ammoLines > 0 or PtsAmmoReady > 0 or PtsAmmoBackup > 0 then
+			table.Add(Tabletxt, { Color4, "Ammo: ", Color3, "(" .. pct(PtsAmmo, PointVal) .. "%) - ", PtsAmmo .. FractionalPts .. Sep })
+			if #ammoLines > 0 then
+				for _, line in ipairs(ammoLines) do
+					table.Add(Tabletxt, { Color3, "    " .. line .. Sep })
+				end
+			elseif AmmoReadyRounds > 0 then
+				table.Add(Tabletxt, { Color3, "    " .. AmmoReadyRounds .. " rds READY" .. Sep })
+			end
+		end
+		table.Add(Tabletxt, { Color4, "Crew: ", Color3, "(" .. pct(PtsCrew, PointVal) .. "%) - ", PtsCrew .. FractionalPts .. Sep })
+		table.Add(Tabletxt, {
+			Color4, "Electronics: ", Color3,
+			"(" .. pct(PtsElectronics, PointVal) .. "%) - ", PtsElectronics .. FractionalPts .. Sep
+		})
+	end
+
+	Tabletxt = table.Add(Tabletxt, Title)
+	if not fullReadout then
+		Tabletxt = table.Add(Tabletxt, SummaryPoints)
+		Tabletxt = table.Add(Tabletxt, SummaryCost)
+	end
+	Tabletxt = table.Add(Tabletxt, TMass2)
 
 
-		local Count = 0
-		for material, _ in pairs( FromJSON[1] ) do
-			local Percent	=  math.Round( FromJSON[2][material] * 100 ,1)
-			local MatText = material .. ": "
-			local MassText = math.Round(Percent,0) .. "%  "
+	local Count = 0
+	for material, _ in pairs(FromJSON[1]) do
+		local Percent = math.Round(FromJSON[2][material] * 100, 1)
+		local MatText = material .. ": "
+		local MassText = math.Round(Percent, 0) .. "%  "
 
-			Count = Count + 1
+		Count = Count + 1
 			if Count > 7 then
 				Count = 0
 				table.Add(Tabletxt,{ Color4, MatText})
@@ -794,8 +1000,10 @@ if CLIENT then
 		getPhrase("tool.acfarmorprop.armor") .. ": %s\n" ..
 		getPhrase("tool.acfarmorprop.health") .. ": %s\n" ..
 		getPhrase("tool.acfarmorprop.material") .. ": %s\n\n" ..
-		getPhrase("tool.acfarmorprop.acepoints") .. ": %s"
+		"%s: %spts\n" ..
+		"Manufacturing Cost: $%s"
 
+	-- Draw the hover tooltip and popup text.
 	function TOOL:DrawHUD()
 
 		local ent = self:GetOwner():GetEyeTrace().Entity
@@ -805,7 +1013,9 @@ if CLIENT then
 		local curarmor	= self.Weapon:GetNWFloat( "MaxArmour" )
 		local curhealth	= self.Weapon:GetNWFloat( "MaxHP" )
 		local material	= self.Weapon:GetNWString( "Material" )
+		local pointLabel		= self.Weapon:GetNWString( "PointCostLabel", "Entity Cost" )
 		local acepointcost	= self.Weapon:GetNWFloat( "PointCost" )
+		local acecost		= self.Weapon:GetNWFloat( "CostValue", 0 )
 
 		local area		= GetConVar( "acfarmorprop_area" ):GetFloat()
 		local ductility	= GetConVar( "acfarmorprop_ductility" ):GetFloat()
@@ -826,7 +1036,9 @@ if CLIENT then
 			math.Round(armor, 2),
 			math.Round(health, 2),
 			MatData.sname,
-			math.Round(acepointcost, 1)
+			pointLabel,
+			math.Round(acepointcost, 1),
+			math.Round(acecost * 100, 0)
 		)
 
 		local pos = ent:WorldSpaceCenter()
@@ -834,6 +1046,7 @@ if CLIENT then
 
 	end
 
+	-- Draw the tool screen HUD.
 	function TOOL:DrawToolScreen()
 
 		local Health	= math.Round( self.Weapon:GetNWFloat( "HP", 0 ), 2 )
