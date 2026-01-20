@@ -96,12 +96,11 @@ local function ACE_GetAmmoTypeFactor(ammoType)
 end
 
 -- Compute ready rack capacity for a caliber.
-local function ACE_GetReadyRackCap(calMm, totalRounds)
+local function ACE_GetReadyRackCap(calMm)
 	local cfg = AmmoCostConfig or {}
-	local readyBase, readyMax = cfg.ReadyRackBase or 0, cfg.ReadyRackMax or 0
-	if readyBase <= 0 or readyMax <= 0 then return 0 end
+	local readyBase = cfg.ReadyRackBase or 0
+	if readyBase <= 0 then return 0 end
 
-	local readyMin = cfg.ReadyRackMin or 0
 	local pivot    = cfg.ReadyRackPivot or 0
 	local lowBoost = cfg.ReadyRackLowBoost or 0
 
@@ -112,12 +111,7 @@ local function ACE_GetReadyRackCap(calMm, totalRounds)
 		baseCap = baseCap * (1 + lowBoost * ratio)
 	end
 
-	local cap = math.Clamp(baseCap, readyMin, readyMax)
-	if totalRounds and totalRounds > 0 then
-		cap = math.min(cap, totalRounds)
-	end
-
-	return math.floor(cap + 0.5)
+	return math.floor(baseCap + 0.5)
 end
 
 -- Forward declare ammo RPS helper for use in the collectors.
@@ -270,12 +264,12 @@ local function ACE_CalcAmmoCratePoints(crate, gunRpsById, racks, readyAlloc)
 	local tailFactor = cfg.TailFactor or 0
 	local tailStartMul = cfg.TailStartMultiplier or 0
 
-	local readyCap   = ACE_GetReadyRackCap(calMm, rounds)
+	local readyCap   = ACE_GetReadyRackCap(calMm)
 	local readyCount = rounds
 	local stowCount  = 0
 
 	if readyCap > 0 then
-		readyCount = readyCap
+		readyCount = math.min(readyCap, rounds)
 		stowCount  = math.max(rounds - readyCount, 0)
 	end
 
@@ -472,10 +466,10 @@ end
 -- Allocate ready-rack rounds across ammo crates.
 local function ACE_BuildAmmoReadyAlloc(ents)
 	local cfg = AmmoCostConfig or {}
-	if (cfg.ReadyRackBase or 0) <= 0 or (cfg.ReadyRackMax or 0) <= 0 then return nil end
+	if (cfg.ReadyRackBase or 0) <= 0 then return nil end
 
 	local groups = {}
-	-- Group ammo crates by ammo id to split ready-rack capacity fairly.
+	-- Group ammo crates by ammo id + type to split ready-rack capacity per round type.
 
 	for _, ent in ipairs(ents) do
 		if IsEnt(ent) and ent:GetClass() == "acf_ammo" then
@@ -487,10 +481,12 @@ local function ACE_BuildAmmoReadyAlloc(ents)
 					if ammoId then
 						local calMm = ACE_GetAmmoCaliberMm(bdata)
 						if calMm > 0 then
-							local group = groups[ammoId]
+							local ammoType = bdata.Type or ""
+							local ammoKey = ammoId .. ":" .. ammoType
+							local group = groups[ammoKey]
 							if not group then
 								group = { calMm = calMm, total = 0, entries = {} }
-								groups[ammoId] = group
+								groups[ammoKey] = group
 							end
 
 							group.total = group.total + rounds
@@ -507,18 +503,19 @@ local function ACE_BuildAmmoReadyAlloc(ents)
 	for _, group in pairs(groups) do
 		local total = group.total or 0
 		if total > 0 then
-			local readyCap = ACE_GetReadyRackCap(group.calMm, total)
+			local readyCap = ACE_GetReadyRackCap(group.calMm)
 			if readyCap > 0 then
 				local entries = {}
 				local remaining = readyCap
 				-- Use fractional remainders to distribute the leftover rounds.
 
-				for _, entry in ipairs(group.entries) do
-					local raw = readyCap * entry.rounds / total
-					local base = math.floor(raw)
-					remaining = remaining - base
-					entries[#entries + 1] = { ent = entry.ent, rounds = entry.rounds, ready = base, frac = raw - base }
-				end
+			for _, entry in ipairs(group.entries) do
+				local raw = readyCap * entry.rounds / total
+				local base = math.floor(raw)
+				local capped = math.min(base, entry.rounds)
+				remaining = remaining - capped
+				entries[#entries + 1] = { ent = entry.ent, rounds = entry.rounds, ready = capped, frac = raw - base }
+			end
 
 				table.sort(entries, function(a, b)
 					if a.frac == b.frac then
@@ -1173,9 +1170,38 @@ timer.Create("ACE_DupeArmorCacheGC", 60, 0, function()
 	ACE.DupeArmorCacheLastClear = now
 end)
 
-concommand.Add("ace_dupe_armor_cache_clear", function()
+local function ACE_ClearAllCaches()
 	ACE.DupeArmorCache = {}
 	ACE.DupeArmorCacheLastClear = CurTime()
+
+	local cleared = {}
+	for _, ent in ipairs(ents.GetAll()) do
+		if IsEnt(ent) and ent.GetContraption then
+			local con = ent:GetContraption()
+			if con and con.ents and not cleared[con] then
+				cleared[con] = true
+				con.ACEArmorCachedData = nil
+				con.ACEArmorCacheKey = nil
+				con.ACEArmorCalculated = false
+				con.ACEArmorDirty = true
+				con.ACEArmorLastCalc = 0
+				con.ACENonArmorDirty = true
+				con.ACEAmmoCache = nil
+				con.ACEPointsDetails = nil
+
+				for _, cent in pairs(con.ents) do
+					if IsEnt(cent) then
+						cent._AcePts = nil
+						cent.ACEPoints = nil
+					end
+				end
+			end
+		end
+	end
+end
+
+concommand.Add("ace_cache_clear_all", function()
+	ACE_ClearAllCaches()
 end)
 
 -- Validate an armor scan result.

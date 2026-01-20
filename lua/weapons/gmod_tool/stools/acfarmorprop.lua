@@ -865,10 +865,10 @@ if CLIENT then
 				Color1,
 				"[!] ARMOR COST NOT INITIALIZED. ",
 				Color2,
-				"Unfreeze or enter vehicle. Double-tap R to preview." .. Sep
+				"Something terrible has happened. Please forward this to the devs. Frankly I don't even know how you got here." .. Sep
 			})
 		end
-		if fullReadout then
+		if not ArmorInitMissing and fullReadout then
 			table.Add(Tabletxt, { Color4, "Manufacturing Cost: ", Color3, "$" .. CostDisplay .. Sep })
 		end
 	else
