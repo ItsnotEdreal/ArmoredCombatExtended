@@ -804,6 +804,11 @@ function ACE_GetAmmoTypeFactor(ammoType)
 	return factors and factors[ammoType] or 1
 end
 
+-- Determine whether an ammo type should use HE utility scaling.
+function ACE_IsHEAmmoType(ammoType)
+	return ammoType == "HE" or ammoType == "HEFS" or ammoType == "CHE"
+end
+
 -- Compute ready rack capacity for a caliber.
 function ACE_GetReadyRackCap(calMm)
 	local cfg = ACE.AmmoCostConfig or {}
@@ -821,6 +826,88 @@ function ACE_GetReadyRackCap(calMm)
 	end
 
 	return math.floor(baseCap + 0.5)
+end
+
+-- Calculate per-round points (no RPS factors) for ammo allocation weighting.
+function ACE_GetAmmoRoundPoints(bdata)
+	if not bdata then return 0 end
+
+	local maxPen = ACE_GetAmmoMaxPen(bdata)
+	local blastMass = ACE_GetAmmoBlastMass(bdata)
+	if maxPen <= 0 and blastMass <= 0 then return 0 end
+
+	local calMm = ACE_GetAmmoCaliberMm(bdata)
+	if calMm <= 0 then return 0 end
+
+	local typeFactor = ACE_GetAmmoTypeFactor(bdata.Type)
+	if typeFactor <= 0 then return 0 end
+
+	local cfg = ACE.AmmoCostConfig or {}
+	local refPen = cfg.RefPen or 0
+	local refCal = cfg.RefCaliber or 0
+	local baseRound = cfg.BaseRoundPts or 0
+	if refPen <= 0 or refCal <= 0 or baseRound <= 0 then return 0 end
+
+	local penExp = cfg.PenExp or 1
+	local blastExp = cfg.BlastExp or 1
+	local blastWeight = cfg.BlastWeight or 0
+	local refBlast = cfg.RefBlastMass or 0
+
+	local penFactor = (maxPen / refPen) ^ penExp
+	local blastFactor = 0
+	if blastMass > 0 and refBlast > 0 then
+		blastFactor = (blastMass / refBlast) ^ blastExp
+	end
+
+	local utilFactor = 0
+	if ACE_IsHEAmmoType(bdata.Type) and blastMass > 0 then
+		local utilWeight = cfg.HeUtilWeight or 0
+		local utilExp = cfg.HeUtilExp or 1
+		utilFactor = (blastMass / math.max(calMm, 1)) ^ utilExp * utilWeight
+	end
+
+	local threatFactor = penFactor + blastFactor * blastWeight + utilFactor
+	if threatFactor <= 0 then return 0 end
+
+	local calFactor = calMm / refCal
+
+	return baseRound * threatFactor * calFactor * typeFactor
+end
+
+-- Calculate threat weight for ready-rack allocation.
+function ACE_GetAmmoThreatWeight(bdata)
+	if not bdata then return 0 end
+
+	local maxPen = ACE_GetAmmoMaxPen(bdata)
+	local blastMass = ACE_GetAmmoBlastMass(bdata)
+	if maxPen <= 0 and blastMass <= 0 then return 0 end
+
+	local cfg = ACE.AmmoCostConfig or {}
+	local refPen = cfg.RefPen or 0
+	local refBlast = cfg.RefBlastMass or 0
+	if refPen <= 0 then return 0 end
+
+	local penExp = cfg.PenExp or 1
+	local blastExp = cfg.BlastExp or 1
+	local blastWeight = cfg.BlastWeight or 0
+
+	local penFactor = (maxPen / refPen) ^ penExp
+	local blastFactor = 0
+	if blastMass > 0 and refBlast > 0 then
+		blastFactor = (blastMass / refBlast) ^ blastExp
+	end
+
+	local utilFactor = 0
+	if ACE_IsHEAmmoType(bdata.Type) and blastMass > 0 then
+		local calMm = ACE_GetAmmoCaliberMm(bdata)
+		if calMm > 0 then
+			local utilWeight = cfg.HeUtilWeight or 0
+			local utilExp = cfg.HeUtilExp or 1
+			utilFactor = (blastMass / math.max(calMm, 1)) ^ utilExp * utilWeight
+		end
+	end
+
+	return penFactor + blastFactor * blastWeight + utilFactor
 end
 
 -- Compute sustained rounds per second for a gun/rack.
@@ -926,7 +1013,7 @@ function ACE_BuildAmmoReadyAlloc(ents)
 	if (cfg.ReadyRackBase or 0) <= 0 then return nil end
 
 	local groups = {}
-	-- Group ammo crates by ammo id + type to split ready-rack capacity per round type.
+	-- Group ammo crates by caliber and weight by per-round cost.
 
 	for _, ent in ipairs(ents) do
 		if ACE_IsEnt(ent) and ent:GetClass() == "acf_ammo" then
@@ -938,16 +1025,20 @@ function ACE_BuildAmmoReadyAlloc(ents)
 					if ammoId then
 						local calMm = ACE_GetAmmoCaliberMm(bdata)
 						if calMm > 0 then
-							local ammoType = bdata.Type or ""
-							local ammoKey = ammoId .. ":" .. ammoType
-							local group = groups[ammoKey]
+							local group = groups[calMm]
 							if not group then
 								group = { calMm = calMm, total = 0, entries = {} }
-								groups[ammoKey] = group
+								groups[calMm] = group
 							end
 
-							group.total = group.total + rounds
-							group.entries[#group.entries + 1] = { ent = ent, rounds = rounds }
+                            local threat = ACE_GetAmmoThreatWeight(bdata)
+                            local weight = threat * rounds
+							group.total = group.total + math.max(weight, 0)
+							group.entries[#group.entries + 1] = {
+								ent = ent,
+								rounds = rounds,
+								weight = weight
+							}
 						end
 					end
 				end
@@ -967,11 +1058,20 @@ function ACE_BuildAmmoReadyAlloc(ents)
 				-- Use fractional remainders to distribute the leftover rounds.
 
 				for _, entry in ipairs(group.entries) do
-					local raw = readyCap * entry.rounds / total
+					local weight = entry.weight or 0
+					local raw = 0
+					if weight > 0 then
+						raw = readyCap * weight / total
+					end
 					local base = math.floor(raw)
 					local capped = math.min(base, entry.rounds)
 					remaining = remaining - capped
-					entries[#entries + 1] = { ent = entry.ent, rounds = entry.rounds, ready = capped, frac = raw - base }
+					entries[#entries + 1] = {
+						ent = entry.ent,
+						rounds = entry.rounds,
+						ready = capped,
+						frac = raw - base
+					}
 				end
 
 				table.sort(entries, function(a, b)
@@ -1255,3 +1355,8 @@ function ACE_GetArmorScan(ent)
 	if not ACE_CalcContraptionArmor then return 0, 0 end
 	return ACE_CalcContraptionArmor(ent)
 end
+
+
+
+
+

@@ -140,19 +140,19 @@ ACE.AmmoPerTon     = 100 --Point cost per ton of ammo
 -- Deprecated: armor mass-based cost has been replaced by LOS armor scan.
 --
 -- Ammo cost scoring config for the ACE legality system.
-ACE.AmmoTypeFactors = ACE.AmmoTypeFactors or {
+ACE.AmmoTypeFactors = {
     AP = 0.5,
     APHE = 0.6,
     APDS = 0.9,
     APFSDS = 1.2,
     HVAP = 0.7,
     HEAT = 0.75,
-    HEATFS = 0.9,
+    HEATFS = 0.8,
     THEAT = 0.95,
     THEATFS = 1.0,
     HESH = 0.4,
-    HE = 1.5,
-    HEFS = 1.8,
+    HE = 1.2,
+    HEFS = 1.3,
     HP = 0.1,
     CAP = 0.6,
     CHEAT = 0.8,
@@ -177,19 +177,21 @@ ACE.LegacyMatCostTables = ACE.LegacyMatCostTables or {
     Texto = 1.4 * (0.5 / 0.35),
     RHA = 1
 }
-ACE.AmmoCostConfig = ACE.AmmoCostConfig or {
-    BaseRoundPts = 80, -- Base points per round before scaling.
-    RefPen = 650, -- Reference penetration (mm) for pen scaling.
+ACE.AmmoCostConfig = {
+    BaseRoundPts = 120, -- Base points per round before scaling.
+    RefPen = 720, -- Reference penetration (mm) for pen scaling.
     RefCaliber = 100, -- Reference caliber (mm) for caliber scaling.
     PenExp = 1.6, -- Penetration curve exponent.
     RefBlastMass = 6, -- Reference HE filler mass (kg) for blast scaling.
     BlastExp = 1.1, -- Blast curve exponent.
     BlastWeight = 0.25, -- Blend weight for blast vs penetration threat.
+    HeUtilWeight = 1.5, -- HE utility weight from filler mass per caliber.
+    HeUtilExp = 0.5, -- HE utility exponent for filler per caliber.
     RpsRef = 1 / 7, -- Reference rounds per second for ROF scaling.
     RpsExp = 0.5, -- ROF curve exponent.
-    ReadyRackBase = 2600, -- Ready rack baseline: base / caliber(mm).
+    ReadyRackBase = 3000, -- Ready rack baseline: base / caliber(mm).
     ReadyRackPivot = 60, -- Caliber (mm) where low-caliber boost stops.
-    ReadyRackLowBoost = 2.0, -- Low-caliber boost (20mm hits 200 at base 2400).
+    ReadyRackLowBoost = 1.5, -- Low-caliber boost (20mm hits 300 at base 3000).
     StowFactor = 0.0, -- Cost multiplier for stowed rounds.
     TailFactor = 0, -- Extra discount per round beyond tail start (0 disables).
     TailStartMultiplier = 2 -- Tail start = readyCap * multiplier.
@@ -625,3 +627,6 @@ AddCSLuaFile("autorun/acf_missile/folder.lua")
 include("autorun/acf_missile/folder.lua")
 
 print("[ACE | INFO]- Done!")
+
+
+

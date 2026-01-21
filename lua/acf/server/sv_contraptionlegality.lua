@@ -234,6 +234,11 @@ do
 			return OldSetMass(self, mass)
 		end
 
+		local currentMass = self:GetMass()
+		if math.abs(mass - currentMass) < 0.01 then
+			return OldSetMass(self, mass)
+		end
+
 		local oldPts = ent._AcePts or 0
 		ent._AcePts = ACE_GetEntPoints(ent)
 

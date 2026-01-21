@@ -177,7 +177,7 @@ function ACE_CalcNonArmorPoints(con, baseEnt)
     end
 
     -- Aggregate ammo counts for the readout.
-    local function addAmmoLine(state, caliber, ammoType, count)
+    local function addAmmoLine(state, caliber, ammoType, count, points)
         if not count or count <= 0 then return end
         local calKey = caliber and math.floor(caliber + 0.5) or 0
         if calKey <= 0 then return end
@@ -185,8 +185,15 @@ function ACE_CalcNonArmorPoints(con, baseEnt)
         local typeKey = (ammoType ~= "" and ammoType) or "Ammo"
         local key = string.format("%s|%d|%s", state, calKey, typeKey)
 
-        ammoLines[key] = ammoLines[key] or { State = state, Caliber = calKey, Type = typeKey, Count = 0 }
+        ammoLines[key] = ammoLines[key] or {
+            State = state,
+            Caliber = calKey,
+            Type = typeKey,
+            Count = 0,
+            Points = 0
+        }
         ammoLines[key].Count = ammoLines[key].Count + count
+        ammoLines[key].Points = ammoLines[key].Points + (points or 0)
     end
 
     for _, ent in ipairs(ents) do
@@ -217,8 +224,8 @@ function ACE_CalcNonArmorPoints(con, baseEnt)
                             addDetail("Ammo", string.format("Backup ammo %s x%d", ammoType, stowCount), detail.StowCost or 0, ent)
                         end
 
-                        addAmmoLine("READY", detail.Caliber, ammoType, readyCount)
-                        addAmmoLine("BACKUP", detail.Caliber, ammoType, stowCount)
+                        addAmmoLine("READY", detail.Caliber, ammoType, readyCount, detail.ReadyCost)
+                        addAmmoLine("BACKUP", detail.Caliber, ammoType, stowCount, detail.StowCost)
                     end
                 end
             else
@@ -259,7 +266,8 @@ function ACE_CalcNonArmorPoints(con, baseEnt)
                 State = entry.State,
                 Caliber = entry.Caliber,
                 Type = entry.Type,
-                Count = math.floor(entry.Count + 0.5)
+                Count = math.floor(entry.Count + 0.5),
+                Points = math.Round(entry.Points or 0, 1)
             }
         end
     end
@@ -789,3 +797,4 @@ function ACE_EnsureArmor(con, baseEnt, force)
 end
 
 _G.ACE_EnsureArmor = ACE_EnsureArmor
+

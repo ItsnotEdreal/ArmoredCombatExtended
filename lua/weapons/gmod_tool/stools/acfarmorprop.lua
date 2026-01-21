@@ -785,7 +785,8 @@ if CLIENT then
 					count = math.floor(count + 0.5),
 					caliber = tonumber(entry.Caliber or entry.caliber or 0) or 0,
 					atype = tostring(entry.Type or entry.type or "Ammo"),
-					state = state
+					state = state,
+				points = tonumber(entry.Points or entry.points or 0) or 0
 				}
 			end
 		end
@@ -806,7 +807,17 @@ if CLIENT then
 		local formatted = {}
 		for _, entry in ipairs(entries) do
 			local calText = entry.caliber > 0 and string.format("%dmm", entry.caliber) or "0mm"
-			formatted[#formatted + 1] = string.format("%dx%s %s %s", entry.count, calText, entry.atype, entry.state)
+			local stateLabel = entry.state
+			if hideBackup and entry.state == "READY" then
+				stateLabel = ""
+			end
+
+			local costText = ""
+			if entry.state == "READY" and entry.points > 0 then
+				costText = string.format(" - %.1fpts", entry.points)
+			end
+
+			formatted[#formatted + 1] = string.format("%dx%s %s%s%s", entry.count, calText, entry.atype, stateLabel ~= "" and " " .. stateLabel or "", costText)
 		end
 
 		return formatted
@@ -1089,3 +1100,6 @@ if CLIENT then
 
 	end
 end
+
+
+
