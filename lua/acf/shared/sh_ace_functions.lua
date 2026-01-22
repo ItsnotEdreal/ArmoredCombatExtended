@@ -784,6 +784,14 @@ ACE.ClassToType = ACE.ClassToType or {
 	ace_wind_sensor = "Electronics"
 }
 
+ACE.PointSubsystems = ACE.PointSubsystems or {
+	"Engines",
+	"Firepower",
+	"Ammo",
+	"Crew",
+	"Electronics"
+}
+
 -- Resolve point category for an entity class.
 function ACE_GetPtsType(className)
 	if ACE.ArmorClasses[className] then return "Armor" end
@@ -1157,14 +1165,37 @@ function ACE_FormatDupeTransform(pos, ang)
 end
 
 function ACE_FormatArmorKey(material, ductility, armour, maxArmour, mass)
+	-- Cache signatures should ignore runtime mass drift.
 	return string.format(
-		"mat=%s|duct=%.3f|arm=%.2f|max=%.2f|mass=%.2f",
+		"mat=%s|duct=%.3f|arm=%.2f|max=%.2f",
 		tostring(material or ""),
 		tonumber(ductility) or 0,
 		tonumber(armour) or 0,
-		tonumber(maxArmour) or 0,
-		tonumber(mass) or 0
+		tonumber(maxArmour) or 0
 	)
+end
+
+local function ACE_ShouldIncludeArmorSignature(ent)
+	if not IsValid(ent) then return false end
+
+	local cls = ent:GetClass() or ""
+	if cls:find("gmod_wire_", 1, true) then return false end
+	if cls:find("starfall", 1, true) then return false end
+
+	if ent.RenderOverride and tostring(ent.RenderOverride):find("MakeSpherical") then
+		return false
+	end
+
+	if ACE_GetPtsType and ACE_GetPtsType(cls) == "Armor" then return true end
+
+	if cls == "prop_physics" or cls == "primitive_shape" then
+		local acf = ent.ACF
+		if acf and ((acf.Armour or acf.Armor) or (acf.MaxArmour or acf.MaxArmor)) then
+			return true
+		end
+	end
+
+	return false
 end
 
 -- Build a signature for dupe cache lookups.
@@ -1215,14 +1246,14 @@ function ACE_GetDupeSignature(dupe, created)
 
 		local refEnt
 		for _, ent in pairs(created) do
-			if IsValid(ent) then
+			if ACE_ShouldIncludeArmorSignature(ent) then
 				refEnt = ent
 				break
 			end
 		end
 
 		for _, ent in pairs(created) do
-			if IsValid(ent) then
+			if ACE_ShouldIncludeArmorSignature(ent) then
 				local class = ent:GetClass() or "unknown"
 				local model = ent:GetModel() or ""
 
@@ -1260,6 +1291,225 @@ function ACE_GetDupeSignature(dupe, created)
 	end
 
 	return nil
+end
+
+-- Build a signature for created entities using a fixed reference.
+local function ACE_BuildCreatedSignature(created, refEnt, wantInfo)
+	if not util or not util.SHA256 then return nil end
+	if not istable(created) then return nil end
+
+	local parts = {}
+	local included = {}
+	local sum = Vector(0, 0, 0)
+	local count = 0
+
+	local function formatCacheTransform(pos, ang)
+		local posKey = ""
+
+		if pos and pos.x ~= nil and pos.y ~= nil and pos.z ~= nil then
+			posKey = string.format("%.0f,%.0f,%.0f", pos.x, pos.y, pos.z)
+		end
+
+		return posKey, ""
+	end
+
+	for _, ent in pairs(created) do
+		if ACE_ShouldIncludeArmorSignature(ent) then
+			included[#included + 1] = ent
+			sum = sum + ent:GetPos()
+			count = count + 1
+		end
+	end
+
+	if count == 0 then return nil end
+	local center = sum / count
+
+	local fallbackRef
+	local refToken = ""
+	if true then
+		local candidates = {}
+		for _, ent in ipairs(included) do
+			local class = ent:GetClass() or "unknown"
+			local model = ent:GetModel() or ""
+			local acf = ent.ACF
+			local material = acf and acf.Material
+			local ductility = acf and acf.Ductility
+			local armour = acf and (acf.Armour or acf.Armor)
+			local maxArmour = acf and (acf.MaxArmour or acf.MaxArmor)
+			local dist = (ent:GetPos() - center):Length()
+
+			local token = table.concat({
+				class,
+				model,
+				ACE_FormatArmorKey(material, ductility, armour, maxArmour, 0),
+				string.format("%.1f", dist)
+			}, "|")
+			candidates[#candidates + 1] = { ent = ent, token = token }
+		end
+
+		if #candidates > 0 then
+			table.sort(candidates, function(a, b) return a.token < b.token end)
+			fallbackRef = candidates[1].ent
+			refToken = candidates[1].token
+		end
+	end
+
+	if not IsValid(fallbackRef) then return nil end
+
+	for _, ent in ipairs(included) do
+		local class = ent:GetClass() or "unknown"
+		local model = ent:GetModel() or ""
+
+		local acf = ent.ACF
+		local material = acf and acf.Material
+		local ductility = acf and acf.Ductility
+		local armour = acf and (acf.Armour or acf.Armor)
+		local maxArmour = acf and (acf.MaxArmour or acf.MaxArmor)
+
+		local posKey = ""
+
+		parts[#parts + 1] = table.concat({
+			class,
+			model,
+			ACE_FormatArmorKey(material, ductility, armour, maxArmour, 0),
+			posKey
+		}, "|")
+	end
+
+	table.sort(parts)
+	if #parts == 0 then return nil end
+
+	local hash = util.SHA256(table.concat(parts, ";"))
+	local key = tostring(ACE.DupeArmorCacheVersion) .. ":spawn:" .. hash
+	if wantInfo then
+		return key, {
+			count = count,
+			ref = refToken,
+			hash = hash,
+			first = parts[1],
+			last = parts[#parts]
+		}
+	end
+
+	return key
+end
+
+-- Build a signature for created entities using a fixed reference.
+function ACE_GetCreatedSignature(created, refEnt)
+	return ACE_BuildCreatedSignature(created, refEnt, false)
+end
+
+-- Build a signature plus debug info for created entities.
+function ACE_GetCreatedSignatureInfo(created, refEnt)
+	return ACE_BuildCreatedSignature(created, refEnt, true)
+end
+
+ACE.DupeSubsystemCacheVersion = ACE.DupeSubsystemCacheVersion or 1
+
+-- Check if a class should participate in a subsystem signature.
+local function ACE_IsSubsystemClass(subsystem, className)
+	if subsystem == "Ammo" then
+		return className == "acf_ammo" or className == "acf_gun" or className == "acf_rack"
+	end
+
+	if subsystem == "Firepower" then
+		return className == "acf_gun" or className == "acf_rack"
+	end
+
+	return ACE_GetPtsType(className) == subsystem
+end
+
+-- Build a signature token for a subsystem-relevant entity.
+local function ACE_GetSubsystemToken(ent, subsystem)
+	if not ACE_IsEnt(ent) then return nil end
+
+	local className = ent:GetClass() or ""
+	if subsystem == "Ammo" and className == "acf_ammo" then
+		local bdata = ent.BulletData
+		if not bdata then return nil end
+
+		local ammoId = bdata.Id or ""
+		local ammoType = bdata.Type or ""
+		local calMm = ACE_GetAmmoCaliberMm(bdata)
+		local maxPen = ACE_GetAmmoMaxPen(bdata)
+		local blastMass = ACE_GetAmmoBlastMass(bdata)
+		local rounds = ent.Capacity or 0
+
+		return table.concat({
+			className,
+			tostring(ammoId),
+			tostring(ammoType),
+			string.format("%.1f", calMm),
+			string.format("%.2f", maxPen),
+			string.format("%.3f", blastMass),
+			tostring(rounds)
+		}, "|")
+	end
+
+	if (subsystem == "Ammo" or subsystem == "Firepower") and (className == "acf_gun" or className == "acf_rack") then
+		local model = ent:GetModel() or ""
+		local rps = ACE_GetEntRps(ent)
+		local id = ent.Id or ""
+
+		return table.concat({
+			className,
+			tostring(id),
+			string.format("%.4f", rps),
+			model
+		}, "|")
+	end
+
+	local model = ent:GetModel() or ""
+	local pts = ACE_GetEntPoints(ent)
+
+	return table.concat({
+		className,
+		model,
+		string.format("%.2f", pts)
+	}, "|")
+end
+
+-- Build a subsystem signature from a list of entities.
+function ACE_GetSubsystemSignatureFromEnts(subsystem, ents)
+	if not util or not util.SHA256 then return nil end
+	if not subsystem or not istable(ents) then return nil end
+
+	local parts = {}
+	for _, ent in pairs(ents) do
+		if ACE_IsEnt(ent) then
+			local className = ent:GetClass() or ""
+			if ACE_IsSubsystemClass(subsystem, className) then
+				local token = ACE_GetSubsystemToken(ent, subsystem)
+				if token then parts[#parts + 1] = token end
+			end
+		end
+	end
+
+	if #parts == 0 then return nil end
+	table.sort(parts)
+
+	return tostring(ACE.DupeSubsystemCacheVersion) .. ":" .. subsystem .. ":" .. util.SHA256(table.concat(parts, ";"))
+end
+
+-- Build subsystem signatures for a list of entities.
+function ACE_GetSubsystemSignaturesFromEnts(ents)
+	if not istable(ents) then return nil end
+
+	local subsystems = ACE.PointSubsystems or {
+		"Engines",
+		"Firepower",
+		"Ammo",
+		"Crew",
+		"Electronics"
+	}
+
+	local keys = {}
+	for _, subsystem in ipairs(subsystems) do
+		local key = ACE_GetSubsystemSignatureFromEnts(subsystem, ents)
+		if key then keys[subsystem] = key end
+	end
+
+	return next(keys) and keys or nil
 end
 
 -- Normalize AdvDupe2 hook arguments.
@@ -1315,7 +1565,8 @@ end
 function ACE_GetAmmoCratePointsForContraption(crate, con, fallbackEnt)
 	if not ACE_IsEnt(crate) then return 0 end
 
-	if con and con.ACEAmmoCache and not con.ACENonArmorDirty then
+	local ammoDirty = con and con.ACESubsystemDirty and con.ACESubsystemDirty.Ammo
+	if con and con.ACEAmmoCache and not ammoDirty then
 		local cache = con.ACEAmmoCache
 		return ACE_CalcAmmoCratePoints(crate, cache.GunRpsById or {}, cache.Racks or {}, cache.ReadyAlloc)
 	end
@@ -1355,6 +1606,14 @@ function ACE_GetArmorScan(ent)
 	if not ACE_CalcContraptionArmor then return 0, 0 end
 	return ACE_CalcContraptionArmor(ent)
 end
+
+
+
+
+
+
+
+
 
 
 

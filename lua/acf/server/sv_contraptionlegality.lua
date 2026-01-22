@@ -7,6 +7,7 @@ include("acf/server/sv_pointshandling.lua")
 local ACE_ConVarHelp = ACE_ConVarHelp
 local IsEnt = ACE_IsEnt
 local ACE_GetPtsType = ACE_GetPtsType
+ACE.CacheVersion = ACE.CacheVersion or 1
 
 -- ------------------------------------------------------------
 -- Legal check throttle (prevents chat spam)
@@ -68,11 +69,46 @@ end
 -- ------------------------------------------------------------
 
 do
+	-- Sync per-contraption cache version and invalidate stale local caches.
+	function ACE_EnsureCacheVersion(con)
+		if not con then return false end
+
+		if con.ACECacheVersion == nil then
+			con.ACECacheVersion = ACE.CacheVersion
+			return false
+		end
+
+		if con.ACECacheVersion == ACE.CacheVersion then return false end
+
+		con.ACECacheVersion = ACE.CacheVersion
+
+		con.ACEArmorCachedData = nil
+		con.ACEArmorCacheKey = nil
+		con.ACEArmorCalculated = false
+		con.ACEArmorLastCalc = 0
+
+		con.ACENonArmorDirty = true
+		con.ACEAmmoCache = nil
+		con.ACESubsystemCache = {}
+		con.ACESubsystemDirty = {
+			Ammo = true,
+			Engines = true,
+			Firepower = true,
+			Crew = true,
+			Electronics = true
+		}
+		con.ACEDupeSubsystemKeys = nil
+		con.ACEPointsDetails = nil
+
+		return true
+	end
+
 	-- Initialize per-contraption points state.
 	local function ACE_InitPts(con)
 		if con.ACEInitDone then return end
 		con.ACEInitDone = true
 
+		con.ACECacheVersion = ACE.CacheVersion
 		con.ACEPoints = 0
 		con.ACEPointsNonArmor = 0
 
@@ -83,6 +119,15 @@ do
 
 		con.ACENonArmorDirty = true
 		con.ACEAmmoCache = nil
+		con.ACESubsystemCache = {}
+		con.ACESubsystemDirty = {
+			Ammo = true,
+			Engines = true,
+			Firepower = true,
+			Crew = true,
+			Electronics = true
+		}
+		con.ACEDupeSubsystemKeys = nil
 
 		con.ACEPointsPerType = {}
 		for _, k in ipairs({
@@ -98,6 +143,27 @@ do
 			"Electronics"
 		}) do
 			con.ACEPointsPerType[k] = 0
+		end
+	end
+
+	-- Mark a subsystem as dirty and clear related caches.
+	function ACE_MarkSubsystemDirty(con, subsystem)
+		if not con or not subsystem then return end
+
+		con.ACESubsystemDirty = con.ACESubsystemDirty or {}
+		con.ACESubsystemDirty[subsystem] = true
+		con.ACENonArmorDirty = true
+
+		if con.ACEDupeSubsystemKeys then
+			con.ACEDupeSubsystemKeys[subsystem] = nil
+		end
+
+		if con.ACESubsystemCache then
+			con.ACESubsystemCache[subsystem] = nil
+		end
+
+		if subsystem == "Ammo" then
+			con.ACEAmmoCache = nil
 		end
 	end
 
@@ -118,12 +184,16 @@ do
 		if not IsEnt(ent) then return end
 
 		local cls = ent:GetClass()
-		if cls == "acf_ammo" or cls == "acf_gun" or cls == "acf_rack" then
-			con.ACENonArmorDirty = true
-			con.ACEAmmoCache = nil
+		local eclass = ACE_GetPtsType(cls)
+
+		if eclass ~= "Ignore" and eclass ~= "Armor" then
+			ACE_MarkSubsystemDirty(con, eclass)
 		end
 
-		local eclass = ACE_GetPtsType(cls)
+		if cls == "acf_gun" or cls == "acf_rack" then
+			ACE_MarkSubsystemDirty(con, "Ammo")
+		end
+
 		local newPts = ACE_GetEntPoints(ent)
 		local oldPts = ent._AcePts or 0
 
@@ -184,12 +254,16 @@ do
 		ent._ACEPointsConRef = nil
 
 		local cls = ent:GetClass()
-		if cls == "acf_ammo" or cls == "acf_gun" or cls == "acf_rack" then
-			con.ACENonArmorDirty = true
-			con.ACEAmmoCache = nil
+		local eclass = ACE_GetPtsType(cls)
+
+		if eclass ~= "Ignore" and eclass ~= "Armor" then
+			ACE_MarkSubsystemDirty(con, eclass)
 		end
 
-		local eclass = ACE_GetPtsType(cls)
+		if cls == "acf_gun" or cls == "acf_rack" then
+			ACE_MarkSubsystemDirty(con, "Ammo")
+		end
+
 		if eclass == "Ignore" then return end
 
 		if eclass == "Armor" then
@@ -248,7 +322,8 @@ do
 		if not con then return end
 
 		local delta = (ent._AcePts or 0) - oldPts
-		local eclass = ACE_GetPtsType(ent:GetClass())
+		local cls = ent:GetClass()
+		local eclass = ACE_GetPtsType(cls)
 
 		if eclass == "Ignore" then return end
 
@@ -257,6 +332,13 @@ do
 				ACE_MarkArmorDirty(con, ent, "setmass")
 			end
 			return
+		end
+
+		if delta == 0 then return end
+
+		ACE_MarkSubsystemDirty(con, eclass)
+		if cls == "acf_gun" or cls == "acf_rack" then
+			ACE_MarkSubsystemDirty(con, "Ammo")
 		end
 
 		con.ACEPoints = (con.ACEPoints or 0) + delta
@@ -340,6 +422,15 @@ local armorDirtyLogLimit = CreateConVar(
 local armorDirtyLog = armorDirtyLog or {}
 
 
+local function ACE_ShortCacheKey(key)
+    if not key then return "nil" end
+    local hash = tostring(key):match(":([%x]+)$") or tostring(key)
+    if #hash > 8 then
+        return hash:sub(1, 8)
+    end
+    return hash
+end
+
 -- Store a compact dirty-log entry.
 local function ACE_PushDirtyLog(entry)
 	local limit = math.max(10, armorDirtyLogLimit:GetInt() or 120)
@@ -380,6 +471,30 @@ function ACE_DebugDirty(con, reason, ent, extra, action)
 		parentRack = parentIsRack,
 		parentWire = parentIsWire
 	})
+
+-- Emit debug logs for cache decisions.
+function ACE_DebugCache(con, reason, ent, extra, action)
+    if not armorDebugCvar:GetBool() then return end
+
+    local conId = (ACE_GetContraptionIndex and ACE_GetContraptionIndex(con)) or tostring(con)
+    local entClass = IsEnt(ent) and ent:GetClass() or "?"
+    local entIndex = IsEnt(ent) and ent:EntIndex() or 0
+
+    local chain = ACE_GetEntChainSummary(ent, 3)
+
+    ACE_PushDirtyLog({
+        t = CurTime(),
+        reason = tostring(reason),
+        action = tostring(action or "Cache"),
+        conId = tostring(conId),
+        entClass = tostring(entClass),
+        entIndex = entIndex,
+        wasDirty = con and con.ACEArmorDirty or false,
+        extra = extra,
+        chain = chain
+    })
+end
+
 end
 
 concommand.Add("ace_armor_dirty_log_dump", function(_, _, args)
@@ -476,8 +591,10 @@ end
 -- ============================================================
 
 ACE.DupeArmorCache = ACE.DupeArmorCache or {}
+ACE.DupeSubsystemCache = ACE.DupeSubsystemCache or {}
 ACE.DupeArmorCacheVersion = ACE.DupeArmorCacheVersion or 1
 ACE.DupeArmorCacheLastClear = ACE.DupeArmorCacheLastClear or CurTime()
+ACE.DupeSubsystemCacheLastClear = ACE.DupeSubsystemCacheLastClear or CurTime()
 
 local DupeArmorCacheTtl = CreateConVar(
 	"ace_dupe_armor_cache_ttl",
@@ -495,37 +612,17 @@ timer.Create("ACE_DupeArmorCacheGC", 60, 0, function()
 	if now - last < ttl then return end
 
 	ACE.DupeArmorCache = {}
+	ACE.DupeSubsystemCache = {}
 	ACE.DupeArmorCacheLastClear = now
+	ACE.DupeSubsystemCacheLastClear = now
 end)
 
 local function ACE_ClearAllCaches()
 	ACE.DupeArmorCache = {}
+	ACE.DupeSubsystemCache = {}
 	ACE.DupeArmorCacheLastClear = CurTime()
-
-	local cleared = {}
-	for _, ent in ipairs(ents.GetAll()) do
-		if isentity(ent) and IsValid(ent) and ent.GetContraption then
-			local con = ent:GetContraption()
-			if con and con.ents and not cleared[con] then
-				cleared[con] = true
-				con.ACEArmorCachedData = nil
-				con.ACEArmorCacheKey = nil
-				con.ACEArmorCalculated = false
-				con.ACEArmorDirty = true
-				con.ACEArmorLastCalc = 0
-				con.ACENonArmorDirty = true
-				con.ACEAmmoCache = nil
-				con.ACEPointsDetails = nil
-
-				for _, cent in pairs(con.ents) do
-					if isentity(cent) and IsValid(cent) then
-						cent._AcePts = nil
-						cent.ACEPoints = nil
-					end
-				end
-			end
-		end
-	end
+	ACE.DupeSubsystemCacheLastClear = CurTime()
+	ACE.CacheVersion = (ACE.CacheVersion or 1) + 1
 end
 
 concommand.Add("ace_cache_clear_all", function()
@@ -537,38 +634,74 @@ hook.Add("AdvDupe_FinishPasting", "ACE_ArmorInitOnDupePaste_Trimmed", function(.
 	local dupe, created = ACE_ParseAdvDupeArgs(...)
 	if not istable(created) then return end
 
-	local cacheKey = ACE_GetDupeSignature(dupe, created)
-	local cached = (cacheKey and ACE.DupeArmorCache and ACE.DupeArmorCache[cacheKey]) or nil
-
-	-- If cache is junk, ignore it
-	if cached then
-		local f = cached.Front or cached.front or 0
-		local s = cached.Side  or cached.side  or 0
-		if not ACE_IsValidArmorResult(f, s) then
-			ACE.DupeArmorCache[cacheKey] = nil
-			cached = nil
-		end
-	end
+	local baseKey = ACE_GetDupeSignature(dupe, created)
 
 	local cons = {}
+	local conEnts = {}
 	for _, ent in pairs(created) do
 		if IsValid(ent) then
 			local con = ACE_GetContraptionFromEntity(ent)
-			if con then cons[con] = true end
+			if con then
+				cons[con] = true
+				conEnts[con] = conEnts[con] or {}
+				conEnts[con][#conEnts[con] + 1] = ent
+			end
 		end
 	end
 
 	timer.Simple(0.05, function()
 		for con in pairs(cons) do
+			local baseEnt = con.GetACEBaseplate and con:GetACEBaseplate() or nil
+			local ents = conEnts[con]
+
+			local createdKey
+			local createdInfo
+			local cacheKey
+			if ents and ACE_GetCreatedSignature then
+				createdKey = ACE_GetCreatedSignature(ents, baseEnt)
+				cacheKey = createdKey
+			end
+			if not cacheKey then
+				cacheKey = baseKey
+			end
+
+			local cached = (cacheKey and ACE.DupeArmorCache and ACE.DupeArmorCache[cacheKey]) or nil
+			if ACE_DebugCache then
+				if ents and ACE_GetCreatedSignatureInfo then
+					local _, infoTable = ACE_GetCreatedSignatureInfo(ents, baseEnt)
+					createdInfo = infoTable
+				end
+
+				local info = string.format("base=%s created=%s chosen=%s hit=%s count=%s ref=%s",
+					ACE_ShortCacheKey(baseKey),
+					ACE_ShortCacheKey(createdKey),
+					ACE_ShortCacheKey(cacheKey),
+					tostring(cached ~= nil),
+					tostring(createdInfo and createdInfo.count or "?"),
+					createdInfo and tostring(createdInfo.ref or "") or ""
+				)
+				ACE_DebugCache(con, "cache-key", baseEnt or con, info, "CacheInit")
+			end
+
 			if cacheKey then con.ACEArmorCacheKey = cacheKey end
 			if cached then con.ACEArmorCachedData = cached end
-			ACE_EnsureArmor(con, con.GetACEBaseplate and con:GetACEBaseplate(), true)
+
+			if ents then
+				con.ACEDupeSubsystemKeys = ACE_GetSubsystemSignaturesFromEnts(ents)
+			end
+
+			ACE_EnsureArmor(con, baseEnt, true)
 		end
 	end)
 end)
 
 
 -- Armor scan and rebuild logic live in sv_pointshandling.lua
+
+
+
+
+
 
 
 

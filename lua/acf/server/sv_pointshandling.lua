@@ -5,6 +5,203 @@ include("acf/shared/sh_ace_functions.lua")
 
 local IsEnt = ACE_IsEnt
 
+local MIN_DETAIL_PTS = 300
+
+-- Build a readable label for detail entries.
+local function ACE_GetEntityLabel(ent)
+    local label = ent:GetNWString("WireName")
+    if label and label ~= "" then return label end
+    if ent.Name and ent.Name ~= "" then return ent.Name end
+    return ent:GetClass()
+end
+
+-- Add a high-cost item to the detail list.
+local function ACE_AddDetailItem(detailItems, category, label, pts, ent, minDetailPts)
+    if not pts or pts < (minDetailPts or 0) then return end
+    detailItems[#detailItems + 1] = {
+        category = category,
+        label = label,
+        pts = pts,
+        idx = IsEnt(ent) and ent:EntIndex() or 0
+    }
+end
+
+-- Sort and trim detail entries for the readout.
+local function ACE_TrimDetailItems(detailItems, minDetailPts)
+    table.sort(detailItems, function(a, b)
+        if a.pts == b.pts then return a.idx < b.idx end
+        return a.pts > b.pts
+    end)
+
+    local trimmed = {}
+    for _, entry in ipairs(detailItems) do
+        if entry.pts >= minDetailPts then
+            trimmed[#trimmed + 1] = {
+                Category = entry.category,
+                Label = entry.label,
+                Points = math.Round(entry.pts, 1)
+            }
+        end
+    end
+
+    return trimmed
+end
+
+-- Aggregate ammo counts for the readout.
+local function ACE_AddAmmoLine(ammoLines, state, caliber, ammoType, count, points)
+    if not count or count <= 0 then return end
+    local calKey = caliber and math.floor(caliber + 0.5) or 0
+    if calKey <= 0 then return end
+
+    local typeKey = (ammoType ~= "" and ammoType) or "Ammo"
+    local key = string.format("%s|%d|%s", state, calKey, typeKey)
+
+    ammoLines[key] = ammoLines[key] or {
+        State = state,
+        Caliber = calKey,
+        Type = typeKey,
+        Count = 0,
+        Points = 0
+    }
+    ammoLines[key].Count = ammoLines[key].Count + count
+    ammoLines[key].Points = ammoLines[key].Points + (points or 0)
+end
+
+-- Convert ammo line buckets into a sorted list.
+local function ACE_BuildAmmoLineList(ammoLines)
+    local ammoList = {}
+    for _, entry in pairs(ammoLines) do
+        if entry.Count and entry.Count > 0 then
+            ammoList[#ammoList + 1] = {
+                State = entry.State,
+                Caliber = entry.Caliber,
+                Type = entry.Type,
+                Count = math.floor(entry.Count + 0.5),
+                Points = math.Round(entry.Points or 0, 1)
+            }
+        end
+    end
+
+    table.sort(ammoList, function(a, b)
+        if a.State ~= b.State then return a.State < b.State end
+        if a.Caliber ~= b.Caliber then return a.Caliber < b.Caliber end
+        return a.Type < b.Type
+    end)
+
+    return ammoList
+end
+
+
+-- Build per-contraption ammo cache inputs.
+local function ACE_BuildAmmoCache(ents)
+    local gunRpsById, racks = ACE_BuildGunRpsAndRacks(ents)
+    local readyAlloc = ACE_BuildAmmoReadyAlloc(ents)
+
+    return {
+        GunRpsById = gunRpsById,
+        Racks = racks,
+        ReadyAlloc = readyAlloc
+    }
+end
+
+-- Calculate ammo totals and readout data for a contraption.
+local function ACE_CalcAmmoSubsystem(ents, minDetailPts)
+    local totals = {
+        Ammo = 0,
+        AmmoReady = 0,
+        AmmoBackup = 0,
+        AmmoReadyRounds = 0,
+        AmmoBackupRounds = 0
+    }
+
+    local detailItems = {}
+    local ammoLines = {}
+
+    local ammoCache = ACE_BuildAmmoCache(ents)
+    local gunRpsById = ammoCache.GunRpsById
+    local racks = ammoCache.Racks
+    local readyAlloc = ammoCache.ReadyAlloc
+
+    for _, ent in ipairs(ents) do
+        if IsEnt(ent) and ent:GetClass() == "acf_ammo" then
+            local pts, detail = ACE_CalcAmmoCratePoints(ent, gunRpsById, racks, readyAlloc)
+            if pts > 0 then
+                totals.Ammo = totals.Ammo + pts
+
+                if detail then
+                    totals.AmmoReady = totals.AmmoReady + (detail.ReadyCost or 0)
+                    totals.AmmoBackup = totals.AmmoBackup + (detail.StowCost or 0)
+                    totals.AmmoReadyRounds = totals.AmmoReadyRounds + (detail.ReadyCount or 0)
+                    totals.AmmoBackupRounds = totals.AmmoBackupRounds + (detail.StowCount or 0)
+
+                    local ammoType = detail.Type ~= "" and detail.Type or "Ammo"
+                    local readyCount = math.floor((detail.ReadyCount or 0) + 0.5)
+                    local stowCount = math.floor((detail.StowCount or 0) + 0.5)
+                    local readyCost = detail.ReadyCost or 0
+                    local stowCost = detail.StowCost or 0
+
+                    if readyCount > 0 and readyCost > 0 then
+                        ACE_AddDetailItem(
+                            detailItems,
+                            "Ammo",
+                            string.format("Ready rack %s x%d", ammoType, readyCount),
+                            readyCost,
+                            ent,
+                            minDetailPts
+                        )
+                    end
+                    if stowCount > 0 and stowCost > 0 then
+                        ACE_AddDetailItem(
+                            detailItems,
+                            "Ammo",
+                            string.format("Backup ammo %s x%d", ammoType, stowCount),
+                            stowCost,
+                            ent,
+                            minDetailPts
+                        )
+                    end
+
+                    ACE_AddAmmoLine(ammoLines, "READY", detail.Caliber, ammoType, readyCount, readyCost)
+                    if stowCost > 0 then
+                        ACE_AddAmmoLine(ammoLines, "BACKUP", detail.Caliber, ammoType, stowCount, stowCost)
+                    end
+                end
+            end
+        end
+    end
+
+    return totals, detailItems, ammoLines, ammoCache
+end
+
+-- Calculate non-ammo points for a single subsystem.
+local function ACE_CalcNonAmmoSubsystem(ents, subsystem, minDetailPts)
+    local total = 0
+    local detailItems = {}
+
+    for _, ent in ipairs(ents) do
+        if IsEnt(ent) then
+            local cls = ent:GetClass()
+            local eclass = ACE_GetPtsType(cls)
+            if eclass == subsystem then
+                local pts = ACE_GetEntPoints(ent)
+                if pts ~= 0 then
+                    total = total + pts
+                    ACE_AddDetailItem(
+                        detailItems,
+                        subsystem,
+                        ACE_GetEntityLabel(ent),
+                        pts,
+                        ent,
+                        minDetailPts
+                    )
+                end
+            end
+        end
+    end
+
+    return total, detailItems
+end
+
 -- ============================================================
 -- Point and armor calculation logic for contraption scans
 -- ============================================================
@@ -146,131 +343,53 @@ function ACE_CalcNonArmorPoints(con, baseEnt)
         Electronics = 0
     }
 
-    local nonArmor = 0
-    local ents = ACE_GetContraptionEntities(con, baseEnt)
-
-    local gunRpsById, racks = ACE_BuildGunRpsAndRacks(ents)
-
-    local readyAlloc = ACE_BuildAmmoReadyAlloc(ents)
-    local ammoCache = { GunRpsById = gunRpsById, Racks = racks, ReadyAlloc = readyAlloc }
-
-    local minDetailPts = 300
     local detailItems = {}
     local ammoLines = {}
+    local ammoCache
 
-    -- Build a readable label for detail entries.
-    local function getEntityLabel(ent)
-        local label = ent:GetNWString("WireName")
-        if label and label ~= "" then return label end
-        if ent.Name and ent.Name ~= "" then return ent.Name end
-        return ent:GetClass()
-    end
+    local ents = ACE_GetContraptionEntities(con, baseEnt)
+    local subsystems = ACE.PointSubsystems or {
+        "Engines",
+        "Firepower",
+        "Ammo",
+        "Crew",
+        "Electronics"
+    }
 
-    -- Add a high-cost item to the detail list.
-    local function addDetail(category, label, pts, ent)
-        detailItems[#detailItems + 1] = {
-            category = category,
-            label = label,
-            pts = pts,
-            idx = IsEnt(ent) and ent:EntIndex() or 0
-        }
-    end
+    for _, subsystem in ipairs(subsystems) do
+        if subsystem == "Ammo" then
+            local ammoTotals, ammoDetails, ammoLineMap, builtAmmoCache = ACE_CalcAmmoSubsystem(ents, MIN_DETAIL_PTS)
 
-    -- Aggregate ammo counts for the readout.
-    local function addAmmoLine(state, caliber, ammoType, count, points)
-        if not count or count <= 0 then return end
-        local calKey = caliber and math.floor(caliber + 0.5) or 0
-        if calKey <= 0 then return end
+            totals.Ammo = ammoTotals.Ammo or 0
+            totals.AmmoReady = ammoTotals.AmmoReady or 0
+            totals.AmmoBackup = ammoTotals.AmmoBackup or 0
+            totals.AmmoReadyRounds = ammoTotals.AmmoReadyRounds or 0
+            totals.AmmoBackupRounds = ammoTotals.AmmoBackupRounds or 0
 
-        local typeKey = (ammoType ~= "" and ammoType) or "Ammo"
-        local key = string.format("%s|%d|%s", state, calKey, typeKey)
+            ammoLines = ammoLineMap or {}
+            ammoCache = builtAmmoCache
 
-        ammoLines[key] = ammoLines[key] or {
-            State = state,
-            Caliber = calKey,
-            Type = typeKey,
-            Count = 0,
-            Points = 0
-        }
-        ammoLines[key].Count = ammoLines[key].Count + count
-        ammoLines[key].Points = ammoLines[key].Points + (points or 0)
-    end
+            for _, item in ipairs(ammoDetails) do
+                detailItems[#detailItems + 1] = item
+            end
+        else
+            local pts, items = ACE_CalcNonAmmoSubsystem(ents, subsystem, MIN_DETAIL_PTS)
+            totals[subsystem] = pts or 0
 
-    for _, ent in ipairs(ents) do
-        if IsEnt(ent) then
-            local cls = ent:GetClass()
-
-            -- Ammo crates also contribute ready/backup counts for the readout.
-            if cls == "acf_ammo" then
-                local pts, detail = ACE_CalcAmmoCratePoints(ent, gunRpsById, racks, readyAlloc)
-                if pts > 0 then
-                    nonArmor = nonArmor + pts
-                    totals.Ammo = totals.Ammo + pts
-
-                    if detail then
-                        totals.AmmoReady = totals.AmmoReady + (detail.ReadyCost or 0)
-                        totals.AmmoBackup = totals.AmmoBackup + (detail.StowCost or 0)
-                        totals.AmmoReadyRounds = totals.AmmoReadyRounds + (detail.ReadyCount or 0)
-                        totals.AmmoBackupRounds = totals.AmmoBackupRounds + (detail.StowCount or 0)
-
-                        local ammoType = detail.Type ~= "" and detail.Type or "Ammo"
-                        local readyCount = math.floor((detail.ReadyCount or 0) + 0.5)
-                        local stowCount = math.floor((detail.StowCount or 0) + 0.5)
-
-                        if readyCount > 0 then
-                            addDetail("Ammo", string.format("Ready rack %s x%d", ammoType, readyCount), detail.ReadyCost or 0, ent)
-                        end
-                        if stowCount > 0 then
-                            addDetail("Ammo", string.format("Backup ammo %s x%d", ammoType, stowCount), detail.StowCost or 0, ent)
-                        end
-
-                        addAmmoLine("READY", detail.Caliber, ammoType, readyCount, detail.ReadyCost)
-                        addAmmoLine("BACKUP", detail.Caliber, ammoType, stowCount, detail.StowCost)
-                    end
-                end
-            else
-                -- Non-armor entities are tallied by their category.
-                local eclass = ACE_GetPtsType(cls)
-                if eclass ~= "Ignore" and eclass ~= "Armor" then
-                    local pts = ACE_GetEntPoints(ent)
-                    if pts ~= 0 then
-                        nonArmor = nonArmor + pts
-                        totals[eclass] = (totals[eclass] or 0) + pts
-                        addDetail(eclass, getEntityLabel(ent), pts, ent)
-                    end
-                end
+            for _, item in ipairs(items) do
+                detailItems[#detailItems + 1] = item
             end
         end
     end
 
-    table.sort(detailItems, function(a, b)
-        if a.pts == b.pts then return a.idx < b.idx end
-        return a.pts > b.pts
-    end)
+    local nonArmor = (totals.Engines or 0)
+        + (totals.Firepower or 0)
+        + (totals.Ammo or 0)
+        + (totals.Crew or 0)
+        + (totals.Electronics or 0)
 
-    local trimmed = {}
-    for _, entry in ipairs(detailItems) do
-        if entry.pts >= minDetailPts then
-            trimmed[#trimmed + 1] = {
-                Category = entry.category,
-                Label = entry.label,
-                Points = math.Round(entry.pts, 1)
-            }
-        end
-    end
-
-    local ammoList = {}
-    for _, entry in pairs(ammoLines) do
-        if entry.Count and entry.Count > 0 then
-            ammoList[#ammoList + 1] = {
-                State = entry.State,
-                Caliber = entry.Caliber,
-                Type = entry.Type,
-                Count = math.floor(entry.Count + 0.5),
-                Points = math.Round(entry.Points or 0, 1)
-            }
-        end
-    end
+    local trimmed = ACE_TrimDetailItems(detailItems, MIN_DETAIL_PTS)
+    local ammoList = ACE_BuildAmmoLineList(ammoLines)
 
     return nonArmor, totals, { Items = trimmed, AmmoLines = ammoList }, ammoCache
 end
@@ -279,7 +398,141 @@ end
 function ACE_RebuildNonArmorPoints(con, baseEnt)
     if not con then return end
 
-    local nonArmor, totals, details, ammoCache = ACE_CalcNonArmorPoints(con, baseEnt)
+    local ents = ACE_GetContraptionEntities(con, baseEnt)
+    local subsystems = ACE.PointSubsystems or {
+        "Engines",
+        "Firepower",
+        "Ammo",
+        "Crew",
+        "Electronics"
+    }
+
+    con.ACESubsystemCache = con.ACESubsystemCache or {}
+    con.ACESubsystemDirty = con.ACESubsystemDirty or {}
+    ACE.DupeSubsystemCache = ACE.DupeSubsystemCache or {}
+
+    local dupeKeys = con.ACEDupeSubsystemKeys
+    if not istable(dupeKeys) then
+        dupeKeys = {}
+    end
+
+    -- Resolve a cache key for the subsystem and update stored keys.
+    local function getSubsystemKey(subsystem)
+        local key = dupeKeys[subsystem]
+        if key then return key end
+
+        key = ACE_GetSubsystemSignatureFromEnts(subsystem, ents)
+        if key then
+            dupeKeys[subsystem] = key
+        end
+        return key
+    end
+
+    -- Load or compute cached data for a subsystem.
+    local function cacheSubsystem(subsystem)
+        local cached = con.ACESubsystemCache[subsystem]
+        if cached and not con.ACESubsystemDirty[subsystem] then
+            return cached
+        end
+
+        local key = getSubsystemKey(subsystem)
+        if key then
+            local shared = ACE.DupeSubsystemCache[key]
+            if shared then
+                if subsystem == "Ammo" then
+                    local ammoCache = ACE_BuildAmmoCache(ents)
+                    local data = {
+                        Totals = shared.Totals or {},
+                        Details = shared.Details or {},
+                        AmmoLines = shared.AmmoLines or {},
+                        AmmoCache = ammoCache
+                    }
+                    con.ACESubsystemCache[subsystem] = data
+                    con.ACESubsystemDirty[subsystem] = false
+                    return data
+                end
+
+                con.ACESubsystemCache[subsystem] = shared
+                con.ACESubsystemDirty[subsystem] = false
+                return shared
+            end
+        end
+
+        local data
+        if subsystem == "Ammo" then
+            local ammoTotals, ammoDetails, ammoLines, ammoCache = ACE_CalcAmmoSubsystem(ents, MIN_DETAIL_PTS)
+            data = {
+                Totals = ammoTotals,
+                Details = ammoDetails,
+                AmmoLines = ammoLines,
+                AmmoCache = ammoCache
+            }
+        else
+            local pts, items = ACE_CalcNonAmmoSubsystem(ents, subsystem, MIN_DETAIL_PTS)
+            data = {
+                Totals = { [subsystem] = pts or 0 },
+                Details = items
+            }
+        end
+
+        con.ACESubsystemCache[subsystem] = data
+        con.ACESubsystemDirty[subsystem] = false
+
+        if key then
+            if subsystem == "Ammo" then
+                ACE.DupeSubsystemCache[key] = {
+                    Totals = data.Totals,
+                    Details = data.Details,
+                    AmmoLines = data.AmmoLines
+                }
+            else
+                ACE.DupeSubsystemCache[key] = data
+            end
+        end
+
+        return data
+    end
+
+    local totals = {
+        Engines = 0,
+        Firepower = 0,
+        Ammo = 0,
+        AmmoReady = 0,
+        AmmoBackup = 0,
+        AmmoReadyRounds = 0,
+        AmmoBackupRounds = 0,
+        Crew = 0,
+        Electronics = 0
+    }
+
+    local detailItems = {}
+    local ammoLines = {}
+
+    for _, subsystem in ipairs(subsystems) do
+        local data = cacheSubsystem(subsystem)
+        if data and data.Totals then
+            for k, v in pairs(data.Totals) do
+                totals[k] = (totals[k] or 0) + (v or 0)
+            end
+        end
+
+        if data and data.Details then
+            for _, item in ipairs(data.Details) do
+                detailItems[#detailItems + 1] = item
+            end
+        end
+
+        if subsystem == "Ammo" and data then
+            ammoLines = data.AmmoLines or {}
+            con.ACEAmmoCache = data.AmmoCache
+        end
+    end
+
+    local nonArmor = (totals.Engines or 0)
+        + (totals.Firepower or 0)
+        + (totals.Ammo or 0)
+        + (totals.Crew or 0)
+        + (totals.Electronics or 0)
 
     con.ACEPointsNonArmor = nonArmor
     con.ACEPointsPerType = con.ACEPointsPerType or {}
@@ -288,8 +541,12 @@ function ACE_RebuildNonArmorPoints(con, baseEnt)
         con.ACEPointsPerType[k] = v
     end
 
-    con.ACEPointsDetails = details
-    con.ACEAmmoCache = ammoCache
+    con.ACEPointsDetails = {
+        Items = ACE_TrimDetailItems(detailItems, MIN_DETAIL_PTS),
+        AmmoLines = ACE_BuildAmmoLineList(ammoLines)
+    }
+
+    con.ACEDupeSubsystemKeys = next(dupeKeys) and dupeKeys or nil
     con.ACENonArmorDirty = false
 end
 
@@ -327,6 +584,11 @@ ACE_CalcContraptionArmor = function(ent)
     if #contraptionEnts == 0 then contraptionEnts[1] = ent end
     if #contraptionEnts > 1 then
         table.sort(contraptionEnts, function(a, b) return a:EntIndex() < b:EntIndex() end)
+    end
+
+    local contraptionSet = {}
+    for _, comp in ipairs(contraptionEnts) do
+        contraptionSet[comp] = true
     end
 
     -- Prefer the largest gun as a forward-direction anchor.
@@ -541,69 +803,72 @@ ACE_CalcContraptionArmor = function(ent)
             local hitEnt = tr.Entity
             if not IsEnt(hitEnt) then break end
 
-            local skip = false
-
-            if hitEnt.RenderOverride and tostring(hitEnt.RenderOverride):find("MakeSpherical") then
-                skip = true
-            end
-
-            if not skip and hitEnt == targetComp then
-                hitTarget = true
-                break
-            end
-
-            if not skip then
-                local cls = hitEnt:GetClass()
-                local skipArmor = ignoredArmor[cls] or not ACF_Check(hitEnt)
-                if skipArmor then
-                    skip = true
-                elseif ACF_CheckClips(hitEnt, tr.HitPos) then
-                    skip = true
-                end
-            end
-
-            if skip then
+            if not contraptionSet[hitEnt] then
                 filter[#filter + 1] = hitEnt
                 startPos = tr.HitPos + dir * 0.1
             else
-                -- Defensive ACF lookup for non-ACF props and holograms.
-                local acf = hitEnt.ACF
-                if not istable(acf) then
+                local skip = false
+
+                if hitEnt.RenderOverride and tostring(hitEnt.RenderOverride):find("MakeSpherical") then
+                    skip = true
+                end
+
+                if not skip and hitEnt == targetComp then
+                    hitTarget = true
+                    break
+                end
+
+                if not skip then
+                    local cls = hitEnt:GetClass()
+                    local skipArmor = ignoredArmor[cls] or not ACF_Check(hitEnt)
+                    if skipArmor then
+                        skip = true
+                    elseif ACF_CheckClips(hitEnt, tr.HitPos) then
+                        skip = true
+                    end
+                end
+
+                if skip then
                     filter[#filter + 1] = hitEnt
                     startPos = tr.HitPos + dir * 0.1
                 else
-                    local Mat = acf.Material or "RHA"
-                    local MatData = ACE_GetMaterialData(Mat)
-
-                    local armor = acf.Armour or 0
-                    local armorData = hitEnt.acfPropArmorData and hitEnt:acfPropArmorData()
-
-                    local effKE = (armorData and armorData.Effectiveness) or (MatData and MatData.effectiveness) or 1
-                    local effCHEM = (armorData and (armorData.HEATeffectiveness or armorData.HEATEffectiveness))
-                        or (MatData and (MatData.HEATeffectiveness or MatData.effectiveness))
-                        or effKE
-
-                    local eff = effKE * 0.8 + effCHEM * 0.2
-                    local curve = (armorData and armorData.Curve) or 1
-
-                    local ang = ACF_GetHitAngle(tr.HitNormal, dir)
-                    local los
-                    if ang >= 89 then
-                        los = (armor ^ curve) * eff
+                    -- Defensive ACF lookup for non-ACF props and holograms.
+                    local acf = hitEnt.ACF
+                    if not istable(acf) then
+                        filter[#filter + 1] = hitEnt
+                        startPos = tr.HitPos + dir * 0.1
                     else
-                        local cosAng = math.max(math.cos(math.rad(ang)), 0.01)
-                        los = (armor / (cosAng ^ ACF.SlopeEffectFactor)) ^ curve
-                        los = los * eff
+                        local Mat = acf.Material or "RHA"
+                        local MatData = ACE_GetMaterialData(Mat)
+
+                        local armor = acf.Armour or 0
+                        local armorData = hitEnt.acfPropArmorData and hitEnt:acfPropArmorData()
+
+                        local effKE = (armorData and armorData.Effectiveness) or (MatData and MatData.effectiveness) or 1
+                        local effCHEM = (armorData and (armorData.HEATeffectiveness or armorData.HEATEffectiveness))
+                            or (MatData and (MatData.HEATeffectiveness or MatData.effectiveness))
+                            or effKE
+
+                        local eff = effKE * 0.8 + effCHEM * 0.2
+                        local curve = (armorData and armorData.Curve) or 1
+
+                        local ang = ACF_GetHitAngle(tr.HitNormal, dir)
+                        local los
+                        if ang >= 89 then
+                            los = (armor ^ curve) * eff
+                        else
+                            local cosAng = math.max(math.cos(math.rad(ang)), 0.01)
+                            los = (armor / (cosAng ^ ACF.SlopeEffectFactor)) ^ curve
+                            los = los * eff
+                        end
+
+                        total = total + los
+
+                        filter[#filter + 1] = hitEnt
+                        startPos = tr.HitPos + dir * 0.1
                     end
-
-                    total = total + los
-
-                    filter[#filter + 1] = hitEnt
-                    startPos = tr.HitPos + dir * 0.1
                 end
             end
-        end
-
         if not hitTarget then return 0 end
         return total
     end
@@ -730,13 +995,20 @@ end
 function ACE_EnsureArmor(con, baseEnt, force)
     if not con then return end
 
-    if not force and not con.ACEArmorDirty then return end
+    local cacheStale = ACE_EnsureCacheVersion and ACE_EnsureCacheVersion(con) or false
+    if not force and not con.ACEArmorDirty and not cacheStale then return end
 
     local base = baseEnt
     if (not IsEnt(base)) and con.GetACEBaseplate then base = con:GetACEBaseplate() end
 
     local front, side = 0, 0
     local usedCache = false
+
+    local cacheKey = con.ACEArmorCacheKey
+    if ACE_DebugCache then
+        local info = string.format("key=%s cached=%s", tostring(cacheKey or "nil"), tostring(cached ~= nil))
+        ACE_DebugCache(con, "ensure-cache", base, info, "EnsureArmor")
+    end
 
     local cached = con.ACEArmorCachedData
     if cached then
@@ -783,6 +1055,13 @@ function ACE_EnsureArmor(con, baseEnt, force)
     if cacheKey and not usedCache and ACE_IsValidArmorResult(front, side) then
         ACE.DupeArmorCache = ACE.DupeArmorCache or {}
         ACE.DupeArmorCache[cacheKey] = { Front = front, Side = side }
+        if ACE_DebugCache then
+            local info = string.format("write key=%s", tostring(cacheKey))
+            ACE_DebugCache(con, "cache-write", base, info, "EnsureArmor")
+        end
+    elseif ACE_DebugCache then
+        local info = string.format("skip key=%s used=%s valid=%s", tostring(cacheKey), tostring(usedCache), tostring(ACE_IsValidArmorResult(front, side)))
+        ACE_DebugCache(con, "cache-skip", base, info, "EnsureArmor")
     end
 
     con.ACEArmorCacheKey = nil
