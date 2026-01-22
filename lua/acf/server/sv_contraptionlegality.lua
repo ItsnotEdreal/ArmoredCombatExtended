@@ -253,7 +253,9 @@ do
 		if eclass == "Ignore" then return end
 
 		if eclass == "Armor" then
-			ACE_MarkArmorDirty(con, ent, "setmass")
+			if delta ~= 0 then
+				ACE_MarkArmorDirty(con, ent, "setmass")
+			end
 			return
 		end
 
@@ -567,3 +569,8 @@ end)
 
 
 -- Armor scan and rebuild logic live in sv_pointshandling.lua
+
+
+
+
+

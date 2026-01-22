@@ -1031,8 +1031,8 @@ function ACE_BuildAmmoReadyAlloc(ents)
 								groups[calMm] = group
 							end
 
-                            local threat = ACE_GetAmmoThreatWeight(bdata)
-                            local weight = threat * rounds
+						local threat = ACE_GetAmmoThreatWeight(bdata)
+						local weight = threat * rounds
 							group.total = group.total + math.max(weight, 0)
 							group.entries[#group.entries + 1] = {
 								ent = ent,
@@ -1355,6 +1355,11 @@ function ACE_GetArmorScan(ent)
 	if not ACE_CalcContraptionArmor then return 0, 0 end
 	return ACE_CalcContraptionArmor(ent)
 end
+
+
+
+
+
 
 
 
