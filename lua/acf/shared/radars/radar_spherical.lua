@@ -16,7 +16,7 @@ ACF_DefineRadar("SmallOMNI-AM", {
 	class		= "OMNI-AM",
 	weight		= 300,
 	range		= 7874, -- range in inches.
-	acepoints = 600
+	acepoints = 900
 } )
 
 
@@ -28,7 +28,7 @@ ACF_DefineRadar("MediumOMNI-AM", {
 	class		= "OMNI-AM",
 	weight		= 600,
 	range		= 15748, -- range in inches.
-	acepoints = 900
+	acepoints = 1400
 } )
 
 
@@ -40,5 +40,5 @@ ACF_DefineRadar("LargeOMNI-AM", {
 	class		= "OMNI-AM",
 	weight		= 1200,
 	range		= 31496, -- range in inches.
-	acepoints = 1200
+	acepoints = 2000
 } )

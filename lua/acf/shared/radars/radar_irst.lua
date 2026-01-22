@@ -12,5 +12,5 @@ ACF_DefineIRST("Small-IRST", {
 	class			= "DIR-IRST",
 	weight			= 400,
 	viewcone		= 60,				--sets the cone of this radar in degrees. this represents the half of the total cone, so 15 means 30 degrees in total
-	acepoints = 200
+	acepoints = 250
 } )
