@@ -689,7 +689,7 @@ hook.Add("AdvDupe_FinishPasting", "ACE_ArmorInitOnDupePaste_Trimmed", function(.
 			if ents then
 				con.ACEDupeSubsystemKeys = ACE_GetSubsystemSignaturesFromEnts(ents)
 			end
-
+			
 			ACE_EnsureArmor(con, baseEnt, true)
 		end
 	end)

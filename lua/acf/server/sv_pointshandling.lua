@@ -869,6 +869,8 @@ ACE_CalcContraptionArmor = function(ent)
                     end
                 end
             end
+        end
+        
         if not hitTarget then return 0 end
         return total
     end
@@ -1076,4 +1078,3 @@ function ACE_EnsureArmor(con, baseEnt, force)
 end
 
 _G.ACE_EnsureArmor = ACE_EnsureArmor
-
