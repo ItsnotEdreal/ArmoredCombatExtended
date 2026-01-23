@@ -423,12 +423,12 @@ local armorDirtyLog = armorDirtyLog or {}
 
 
 local function ACE_ShortCacheKey(key)
-    if not key then return "nil" end
-    local hash = tostring(key):match(":([%x]+)$") or tostring(key)
-    if #hash > 8 then
-        return hash:sub(1, 8)
-    end
-    return hash
+	if not key then return "nil" end
+	local hash = tostring(key):match(":([%x]+)$") or tostring(key)
+	if #hash > 8 then
+		return hash:sub(1, 8)
+	end
+	return hash
 end
 
 -- Store a compact dirty-log entry.
@@ -474,25 +474,25 @@ function ACE_DebugDirty(con, reason, ent, extra, action)
 
 -- Emit debug logs for cache decisions.
 function ACE_DebugCache(con, reason, ent, extra, action)
-    if not armorDebugCvar:GetBool() then return end
+	if not armorDebugCvar:GetBool() then return end
 
-    local conId = (ACE_GetContraptionIndex and ACE_GetContraptionIndex(con)) or tostring(con)
-    local entClass = IsEnt(ent) and ent:GetClass() or "?"
-    local entIndex = IsEnt(ent) and ent:EntIndex() or 0
+	local conId = (ACE_GetContraptionIndex and ACE_GetContraptionIndex(con)) or tostring(con)
+	local entClass = IsEnt(ent) and ent:GetClass() or "?"
+	local entIndex = IsEnt(ent) and ent:EntIndex() or 0
 
-    local chain = ACE_GetEntChainSummary(ent, 3)
+	local chain = ACE_GetEntChainSummary(ent, 3)
 
-    ACE_PushDirtyLog({
-        t = CurTime(),
-        reason = tostring(reason),
-        action = tostring(action or "Cache"),
-        conId = tostring(conId),
-        entClass = tostring(entClass),
-        entIndex = entIndex,
-        wasDirty = con and con.ACEArmorDirty or false,
-        extra = extra,
-        chain = chain
-    })
+	ACE_PushDirtyLog({
+		t = CurTime(),
+		reason = tostring(reason),
+		action = tostring(action or "Cache"),
+		conId = tostring(conId),
+		entClass = tostring(entClass),
+		entIndex = entIndex,
+		wasDirty = con and con.ACEArmorDirty or false,
+		extra = extra,
+		chain = chain
+	})
 end
 
 end
@@ -689,7 +689,7 @@ hook.Add("AdvDupe_FinishPasting", "ACE_ArmorInitOnDupePaste_Trimmed", function(.
 			if ents then
 				con.ACEDupeSubsystemKeys = ACE_GetSubsystemSignaturesFromEnts(ents)
 			end
-			
+
 			ACE_EnsureArmor(con, baseEnt, true)
 		end
 	end)

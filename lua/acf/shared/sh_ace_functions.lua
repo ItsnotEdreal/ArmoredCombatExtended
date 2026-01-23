@@ -1165,6 +1165,7 @@ function ACE_FormatDupeTransform(pos, ang)
 end
 
 function ACE_FormatArmorKey(material, ductility, armour, maxArmour, mass)
+	mass = mass or 0 -- shut up linter
 	-- Cache signatures should ignore runtime mass drift.
 	return string.format(
 		"mat=%s|duct=%.3f|arm=%.2f|max=%.2f",
@@ -1298,20 +1299,11 @@ local function ACE_BuildCreatedSignature(created, refEnt, wantInfo)
 	if not util or not util.SHA256 then return nil end
 	if not istable(created) then return nil end
 
+	refEnt = refEnt or nil
 	local parts = {}
 	local included = {}
 	local sum = Vector(0, 0, 0)
 	local count = 0
-
-	local function formatCacheTransform(pos, ang)
-		local posKey = ""
-
-		if pos and pos.x ~= nil and pos.y ~= nil and pos.z ~= nil then
-			posKey = string.format("%.0f,%.0f,%.0f", pos.x, pos.y, pos.z)
-		end
-
-		return posKey, ""
-	end
 
 	for _, ent in pairs(created) do
 		if ACE_ShouldIncludeArmorSignature(ent) then
