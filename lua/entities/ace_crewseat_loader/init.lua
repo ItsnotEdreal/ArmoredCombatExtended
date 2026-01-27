@@ -41,6 +41,8 @@ function MakeACE_Crewseat_Loader(Owner, Pos, Angle, Id, EntityData)
 	ent:SetAngles(Angle)
 	ent:SetPos(Pos)
 
+	ent.CrewseatData = entData
+
 	local modelType = EntityData
 	if not modelType or modelType == "" then
 		modelType = entData.defaultModel or "Standing"
@@ -207,23 +209,16 @@ end
 function ENT:BuildDupeInfo()
 	local info = self.BaseClass.BuildDupeInfo(self) or {}
 	info.ModelType = self.ModelType
+	info.Model = self.Model
 	return info
 end
 
 function ENT:ApplyDupeInfo(ply, ent, info, GetEntByID)
 	self.BaseClass.ApplyDupeInfo(self, ply, ent, info, GetEntByID)
 
-	local modelType = info.ModelType
+	local class = self:GetClass()
+	local defaultModelType = (ACE.CrewseatDefaults and ACE.CrewseatDefaults[class]) or "Sitting"
 
-	-- Old dupes don't have ModelType saved, default to Sitting (original behavior)
-	if not modelType or not ACE.CrewseatModels[modelType] then
-		modelType = "Sitting"
-	end
-
-	self.ModelType = modelType
-	local model = ACE.CrewseatModels[modelType]
-	if model then
-		self:SetModel(model)
-		self.Model = model
-	end
+	ACE_CrewseatApplyDupeModel(self, info, defaultModelType, true)
+	ACE_CrewseatDeferredModelSync(self, info)
 end

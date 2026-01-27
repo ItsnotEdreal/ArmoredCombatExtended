@@ -6,7 +6,101 @@
 
 include("acf/shared/sh_crewseat_base.lua")
 
+-- Resolve a crewseat model type from dupe data or the current model path.
+function ACE_CrewseatResolveModelType(ent, info)
+	if not IsValid(ent) then return nil end
+
+	local modelPath = (info and info.Model) or ent:GetModel()
+	if not modelPath then return nil end
+
+	local modelType = ACE.CrewseatModelLookup and ACE.CrewseatModelLookup[modelPath]
+	if not modelType or not (ACE.CrewseatModels and ACE.CrewseatModels[modelType]) then
+		return nil
+	end
+
+	if ent.ModelType ~= modelType then
+		ent.ModelType = modelType
+	end
+
+	local model = ACE.CrewseatModels[modelType]
+	if model and ent.Model ~= model then
+		ent:SetModel(model)
+		ent.Model = model
+	end
+
+	return modelType
+end
+
+-- Apply dupe model data with a fallback model type and optional legacy override.
+function ACE_CrewseatApplyDupeModel(ent, info, defaultModelType, legacyForceSitting)
+	local modelType = info.ModelType
+	local legacyLocked = false
+
+	if legacyForceSitting and info.ModelType == nil and info.Model == nil then
+		modelType = "Sitting"
+		legacyLocked = true
+	end
+
+	if not modelType or not ACE.CrewseatModels[modelType] then
+		local modelPath = info.Model or ent:GetModel()
+		modelType = (modelPath and ACE.CrewseatModelLookup[modelPath]) or modelType
+	end
+
+	if not modelType or not ACE.CrewseatModels[modelType] then
+		modelType = defaultModelType or "Sitting"
+	end
+
+	ent.ModelType = modelType
+	ent.ACE_LegacyCrewseatModelLocked = legacyLocked or nil
+
+	local model = ACE.CrewseatModels[modelType]
+	if model then
+		ent:SetModel(model)
+		ent.Model = model
+	end
+
+	return modelType, legacyLocked
+end
+
+-- Defer model sync so the duplicator can finish applying model data.
+function ACE_CrewseatDeferredModelSync(ent, info)
+	timer.Simple(0, function()
+		if not IsValid(ent) then return end
+		if ent.ACE_LegacyCrewseatModelLocked then return end
+		ACE_CrewseatResolveModelType(ent, info)
+	end)
+end
+
 ACE = ACE or {}
+
+-- Dump crewseat state for debugging from console.
+concommand.Add("ace_crewseat_dump", function(_, _, args)
+	local target = tonumber(args[1] or "")
+
+	local function dumpSeat(ent)
+		if not IsValid(ent) then return end
+
+		local owner = ent.CPPIGetOwner and ent:CPPIGetOwner()
+		local ownerName = IsValid(owner) and owner:Nick() or "Unknown"
+		local model = ent:GetModel() or "nil"
+		local modelType = ent.ModelType or "nil"
+		local weight = tonumber(ent.Weight) or 0
+		local legal = ent.Legal and "true" or "false"
+		local issues = ent.LegalIssues or ""
+
+		print(string.format("[ACE Crewseat] %s(%d) owner=%s model=%s modelType=%s weight=%.2f legal=%s issues=%s",
+			ent:GetClass(), ent:EntIndex(), ownerName, model, modelType, weight, legal, issues))
+	end
+
+	if target then
+		dumpSeat(Entity(target))
+		return
+	end
+
+	for _, seat in pairs(ACE.Crewseats or {}) do
+		dumpSeat(seat)
+	end
+end)
 
 -- Rare crew names (easter eggs)
 local rareNames = {
@@ -153,8 +247,11 @@ function ACE_InitializeCrewseat(ent, modelType)
 	ent:SetSolid(SOLID_VPHYSICS)
 
 	local phys = ent:GetPhysicsObject()
+	local crewData = ent.CrewseatData
+	local weight = (crewData and crewData.weight) or ent.Weight or 85
+
 	if IsValid(phys) then
-		phys:SetMass(85) -- requested seat weight
+		phys:SetMass(weight) -- requested seat weight
 	end
 
 	ent.Master = {}
@@ -164,7 +261,7 @@ function ACE_InitializeCrewseat(ent, modelType)
 	ent.ACF.Armour = ent.ACF.Armour or 1
 
 	ent.Name = ent.Name or ACE_GenerateCrewName()
-	ent.Weight = 85
+	ent.Weight = weight
 	ent.AnglePenalty = 0
 	ent.GForcePenalty = 0
 
@@ -219,10 +316,14 @@ end
 -- Crewseat-specific legal check (includes model validation)
 function ACE_CrewseatLegalCheck(ent)
 	if ACF.CurTime > ent.NextLegalCheck then
+		local currentModel = ent:GetModel()
+		if ent.Model ~= currentModel then
+			ent.Model = currentModel
+		end
+
 		ent.Legal, ent.LegalIssues = ACF_CheckLegal(ent, ent.Model, math.Round(ent.Weight, 2), nil, true, true)
 
 		if ent.Legal then
-			local currentModel = ent:GetModel()
 			if not (ACE_IsValidCrewseatModel and ACE_IsValidCrewseatModel(currentModel)) then
 				ent.Legal = false
 				ent.LegalIssues = "Invalid crewseat model"
