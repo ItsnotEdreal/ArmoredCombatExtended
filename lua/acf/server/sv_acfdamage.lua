@@ -1177,9 +1177,12 @@ do
 		end
 
 		local Radius    = ACE_CalculateHERadius( HEWeight )
-		local Pos       = ent:LocalToWorld(ent:OBBCenter())
+		local Pos       = ent.CookoffExplosionPos or ent:LocalToWorld(ent:OBBCenter())
 
 		table.insert(ExplodePos, Pos)
+		if ent.CookoffExplosionPos then
+			table.insert(ExplodePos, ent.CookoffExplosionPos)
+		end
 
 		local LastHE = 0
 		local Search = true
@@ -1303,6 +1306,9 @@ do
 		end
 		local AvgPos = totalpos / #ExplodePos
 
+		if ent.CookoffScale then
+			HEWeight = HEWeight * ent.CookoffScale
+		end
 		HEWeight	= HEWeight * ACF.BoomMult
 		Radius	= ACE_CalculateHERadius( HEWeight )
 

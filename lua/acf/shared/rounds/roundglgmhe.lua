@@ -28,11 +28,12 @@ function Round.create( Gun, BulletData )
 
 	local SMul = 15 / BulletData.Caliber * BulletData.MuzzleVel / 200
 
+	local MuzzlePos = (Gun and Gun.Muzzle and Gun:LocalToWorld(Gun.Muzzle)) or (Gun and Gun:GetPos()) or Vector(0,0,0)
 	local MDat = {
 		Owner = Gun:CPPIGetOwner(),
 		Launcher = Gun,
 
-		Pos = Gun:LocalToWorld(Gun.Muzzle),
+		Pos = MuzzlePos,
 		Ang = Gun:GetAngles(),
 
 		Mdl = mdl,
