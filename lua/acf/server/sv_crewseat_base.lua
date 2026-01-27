@@ -323,11 +323,9 @@ function ACE_CrewseatLegalCheck(ent)
 
 		ent.Legal, ent.LegalIssues = ACF_CheckLegal(ent, ent.Model, math.Round(ent.Weight, 2), nil, true, true)
 
-		if ent.Legal then
-			if not (ACE_IsValidCrewseatModel and ACE_IsValidCrewseatModel(currentModel)) then
-				ent.Legal = false
-				ent.LegalIssues = "Invalid crewseat model"
-			end
+		if ent.Legal and not (ACE_IsValidCrewseatModel and ACE_IsValidCrewseatModel(currentModel)) then
+			ent.Legal = false
+			ent.LegalIssues = "Invalid crewseat model"
 		end
 
 		ent.NextLegalCheck = ACF.Legal.NextCheck(ent.Legal)
