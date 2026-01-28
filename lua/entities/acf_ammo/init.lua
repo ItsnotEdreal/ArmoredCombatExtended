@@ -172,7 +172,6 @@ do
 			self:Remove()
 		else
 
-			local Ratio	= math.max(( HitRes.Damage / self.BulletData.RoundVolume ) ^ 0.2, 1.0)
 			local CMul	= 1  --30% Chance to detonate, 5% chance to cookoff
 			local DetRand	= 0
 
