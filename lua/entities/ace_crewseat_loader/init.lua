@@ -38,16 +38,22 @@ function MakeACE_Crewseat_Loader(Owner, Pos, Angle, Id, EntityData)
 	local ent = ents.Create("ace_crewseat_loader")
 	if not IsValid(ent) then return false end
 
-	ent:SetAngles(Angle)
-	ent:SetPos(Pos)
-
-	ent.CrewseatData = entData
-
 	local modelType = EntityData
+	local spawnPos = Pos
 	if not modelType or modelType == "" then
-		modelType = entData.defaultModel or "Standing"
+		modelType = "Sitting"
+		ent.ACE_LegacyCrewseatModelLocked = true
+		ent.ACE_DupeSpawnLegacy = true
+		spawnPos = Pos
 	end
 	ent.ModelType = modelType
+	ent.ACE_DupeSpawnModelType = modelType
+	ent.ACE_DupeSpawnModel = ACE.CrewseatModels and ACE.CrewseatModels[modelType] or nil
+
+	ent:SetAngles(Angle)
+	ent:SetPos(spawnPos)
+
+	ent.CrewseatData = entData
 
 	ent:Spawn()
 	ent:CPPISetOwner(Owner)
@@ -219,6 +225,8 @@ function ENT:ApplyDupeInfo(ply, ent, info, GetEntByID)
 	local class = self:GetClass()
 	local defaultModelType = (ACE.CrewseatDefaults and ACE.CrewseatDefaults[class]) or "Sitting"
 
-	ACE_CrewseatApplyDupeModel(self, info, defaultModelType, true)
+	ACE_CrewseatDebugLog(self, "ApplyDupeInfoStart", info, "model=" .. tostring(self:GetModel()))
+	local modelType, _, reason = ACE_CrewseatApplyDupeModel(self, info, defaultModelType, true)
+	ACE_CrewseatDebugLog(self, "ApplyDupeInfoEnd", info, "resolved=" .. tostring(modelType) .. " reason=" .. tostring(reason))
 	ACE_CrewseatDeferredModelSync(self, info)
 end

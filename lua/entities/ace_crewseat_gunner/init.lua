@@ -46,6 +46,8 @@ function MakeACE_Crewseat_Gunner(Owner, Pos, Angle, Id, EntityData)
 		modelType = entData.defaultModel or "Sitting"
 	end
 	ent.ModelType = modelType
+	ent.ACE_DupeSpawnModelType = modelType
+	ent.ACE_DupeSpawnModel = ACE.CrewseatModels and ACE.CrewseatModels[modelType] or nil
 
 	ent:Spawn()
 	ent:CPPISetOwner(Owner)
@@ -223,6 +225,8 @@ function ENT:ApplyDupeInfo(ply, ent, info, GetEntByID)
 	local class = self:GetClass()
 	local defaultModelType = (ACE.CrewseatDefaults and ACE.CrewseatDefaults[class]) or "Sitting"
 
-	ACE_CrewseatApplyDupeModel(self, info, defaultModelType, false)
+	ACE_CrewseatDebugLog(self, "ApplyDupeInfoStart", info, "model=" .. tostring(self:GetModel()))
+	local modelType, _, reason = ACE_CrewseatApplyDupeModel(self, info, defaultModelType, false)
+	ACE_CrewseatDebugLog(self, "ApplyDupeInfoEnd", info, "resolved=" .. tostring(modelType) .. " reason=" .. tostring(reason))
 	ACE_CrewseatDeferredModelSync(self, info)
 end
