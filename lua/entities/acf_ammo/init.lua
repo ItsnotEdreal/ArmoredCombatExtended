@@ -13,11 +13,20 @@ local LegacyAmmoTable = ACF.Weapons.LegacyAmmo
 local COOKOFF_THRESHOLD = 0.02
 local COOKOFF_MIN_DURATION = 0.45
 
+local MACHINEGUN_ROUND_TYPES = {
+	SM = true,
+}
+
 local function IsMachineGunAmmo( ent )
 	local bullet = ent and ent.BulletData or {}
 	local id = bullet.Id or ent.RoundId
 	local gun = (id and GunTable and GunTable[id]) or nil
 	local gunclass = (gun and gun.gunclass) or bullet.GunClass or ent.GunClass
+	local roundType = bullet.Type or ent.RoundType
+
+	if roundType and MACHINEGUN_ROUND_TYPES[roundType] then
+		return true
+	end
 	return gunclass == "MG"
 end
 
@@ -81,6 +90,15 @@ local function ResolveWarheadType( bullet )
 	end
 
 	return "HE"
+end
+
+local function SpawnMiniHEFlash(ent, pos, radius)
+	if not IsValid(ent) then return end
+	local HEFlash = EffectData()
+	HEFlash:SetOrigin( pos )
+	HEFlash:SetNormal( -vector_up )
+	HEFlash:SetRadius( radius )
+	util.Effect( "ACF_Scaled_Explosion", HEFlash )
 end
 
 local function ScheduleFinalExplosion( ent )
@@ -974,22 +992,18 @@ function ENT:Think()
 
 							local HE       = self.BulletData.FillerMass	or 0
 							local Propel   = self.BulletData.PropMass	or 0
-						local HEWeight = ((  HE + Propel * ACF.APAmmoDetonateFactor * ( ACF.PBase / ACF.HEPower) ) * ACF.BoomMult)
-						local RunHE = self.CookoffHEToggle
-						self.CookoffHEToggle = not self.CookoffHEToggle
+							local HEWeight = ((HE + Propel * ACF.APAmmoDetonateFactor * (ACF.PBase / ACF.HEPower)) * ACF.BoomMult)
+							local RunHE = self.CookoffHEToggle
+							self.CookoffHEToggle = not self.CookoffHEToggle
 
-						if HEWeight > 0 and RunHE then
-							local MiniWeight = HEWeight * 0.3
-							ACF_HE( self.BulletData.Pos , vector_origin , MiniWeight , MiniWeight , self.Inflictor , self, self, 0.5 )
-							timer.Simple(0.001, function()
-								if not IsValid(self) then return end
-								local HEFlash = EffectData()
-									HEFlash:SetOrigin( self.BulletData.Pos )
-									HEFlash:SetNormal( -vector_up )
-									HEFlash:SetRadius( math.Clamp(self.BulletData.RoundVolume ^ 0.4 * 0.8, 0.8, 10) )
-								util.Effect( "ACF_Scaled_Explosion", HEFlash )
-							end)
-						end
+							if HEWeight > 0 and RunHE then
+								local MiniWeight = HEWeight * 0.2
+								ACF_HE( self.BulletData.Pos , vector_origin , MiniWeight , MiniWeight , self.Inflictor , self, self, 0.5 )
+								local radius = math.Clamp(self.BulletData.RoundVolume ^ 0.4 * 0.8, 0.8, 10)
+								timer.Simple(0.001, function()
+									SpawnMiniHEFlash(self, self.BulletData.Pos, radius)
+								end)
+							end
 						end
 
 						local Duration = math.max( (self.CookoffEnd or Now) - (self.CookoffStart or Now), 0.01 )

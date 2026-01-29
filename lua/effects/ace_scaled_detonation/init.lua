@@ -30,6 +30,13 @@ local function ClampColor( value )
 	return math.Clamp( math.floor( value ), 0, 255 )
 end
 
+local EffectDebugCvar = CreateClientConVar("acf_effect_debug", "0", true, false, "Log ACE clientside effect entry/exit.")
+local function DebugEffect(tag)
+	if EffectDebugCvar:GetBool() then
+		print(("[ACE Effect] %s"):format(tag))
+	end
+end
+
 local VisualScale = 1.3
 local FlashScale = 1.25
 local SmokeScale = 0.8
@@ -42,6 +49,7 @@ local function ExplosionFlashOrigin( effect, radius, extra )
 end
 
 function EFFECT:Init( data )
+	DebugEffect("ace_scaled_detonation Init:Enter")
 
 	self.HitWater = false
 	self.UnderWater = false
@@ -172,12 +180,17 @@ function EFFECT:Init( data )
 
 
 	if IsValid(self.Emitter) then self.Emitter:Finish() end
+	DebugEffect("ace_scaled_detonation Init:Exit")
 end
 
 
 function EFFECT:ExplosionSmall()
 
-	if not self.Emitter then return end
+	if not self.Emitter then
+		DebugEffect("ace_scaled_detonation ExplosionSmall:NoEmitter")
+		return
+	end
+	DebugEffect("ace_scaled_detonation ExplosionSmall:Enter")
 
 	local Radius = self.Radius * 0.9
 	local PMul = 0.5
@@ -319,12 +332,17 @@ function EFFECT:ExplosionSmall()
 		Dust:SetColor( smokeColor.r, smokeColor.g, smokeColor.b )
 	end
 
+	DebugEffect("ace_scaled_detonation ExplosionSmall:Exit")
 end
 
 
 function EFFECT:ExplosionMedium()
 
-	if not self.Emitter then return end
+	if not self.Emitter then
+		DebugEffect("ace_scaled_detonation ExplosionMedium:NoEmitter")
+		return
+	end
+	DebugEffect("ace_scaled_detonation ExplosionMedium:Enter")
 
 	local Radius = self.Radius * 0.6
 	local PMul = 0.5
@@ -509,12 +527,17 @@ function EFFECT:ExplosionMedium()
 		end
 	end
 
+	DebugEffect("ace_scaled_detonation ExplosionMedium:Exit")
 end
 
 
 function EFFECT:Shockwave( Ground, SmokeColor )
 
-	if not self.Emitter then return end
+	if not self.Emitter then
+		DebugEffect("ace_scaled_detonation Shockwave:NoEmitter")
+		return
+	end
+	DebugEffect("ace_scaled_detonation Shockwave:Enter")
 
 	local PMul       = 1
 	local Radius     = (1-Ground.Fraction) * self.Radius
@@ -605,6 +628,7 @@ function EFFECT:Shockwave( Ground, SmokeColor )
 	end
 
 
+	DebugEffect("ace_scaled_detonation Shockwave:Exit")
 end
 
 local TextureTb = {
@@ -623,7 +647,11 @@ local TextureTb = {
 
 function EFFECT:Water( Water )
 
-	if not self.Emitter then return end
+	if not self.Emitter then
+		DebugEffect("ace_scaled_detonation Water:NoEmitter")
+		return
+	end
+	DebugEffect("ace_scaled_detonation Water:Enter")
 
 	local PMul = 1
 
@@ -682,11 +710,16 @@ function EFFECT:Water( Water )
 			Whisp:SetColor( WaterColor.r-SMKColor,WaterColor.g-SMKColor,WaterColor.b-SMKColor )
 		end
 	end
+	DebugEffect("ace_scaled_detonation Water:Exit")
 end
 
 function EFFECT:Concrete( SmokeColor )
 
-	if not self.Emitter then return end
+	if not self.Emitter then
+		DebugEffect("ace_scaled_detonation Concrete:NoEmitter")
+		return
+	end
+	DebugEffect("ace_scaled_detonation Concrete:Enter")
 
 	for _ = 0, 5 * self.Radius do --Flying Debris
 
@@ -730,11 +763,16 @@ function EFFECT:Concrete( SmokeColor )
 			Smoke:SetColor(  SmokeColor.r,SmokeColor.g,SmokeColor.b  )
 		end
 	end
+	DebugEffect("ace_scaled_detonation Concrete:Exit")
 end
 
 function EFFECT:Dirt( SmokeColor )
 
-	if not self.Emitter then return end
+	if not self.Emitter then
+		DebugEffect("ace_scaled_detonation Dirt:NoEmitter")
+		return
+	end
+	DebugEffect("ace_scaled_detonation Dirt:Enter")
 
 	local ScaleMul = 1
 
@@ -793,11 +831,16 @@ function EFFECT:Dirt( SmokeColor )
 	end
 
 
+	DebugEffect("ace_scaled_detonation Dirt:Exit")
 end
 
 function EFFECT:Sand( SmokeColor )
 
-	if not self.Emitter then return end
+	if not self.Emitter then
+		DebugEffect("ace_scaled_detonation Sand:NoEmitter")
+		return
+	end
+	DebugEffect("ace_scaled_detonation Sand:Enter")
 
 	for _ = 0, 6 * self.Radius do
 
@@ -827,11 +870,16 @@ function EFFECT:Sand( SmokeColor )
 			Smoke:SetColor(  SmokeColor.r,SmokeColor.g,SmokeColor.b  )
 		end
 	end
+	DebugEffect("ace_scaled_detonation Sand:Exit")
 end
 
 function EFFECT:Airburst()
 
-	if not self.Emitter then return end
+	if not self.Emitter then
+		DebugEffect("ace_scaled_detonation Airburst:NoEmitter")
+		return
+	end
+	DebugEffect("ace_scaled_detonation Airburst:Enter")
 
 	local Radius = self.Radius
 	for _ = 0, 0.5 * Radius do --Flying Debris
@@ -855,11 +903,16 @@ function EFFECT:Airburst()
 			Debris:SetColor( RandColor,RandColor,RandColor )
 		end
 	end
+	DebugEffect("ace_scaled_detonation Airburst:Exit")
 end
 
 function EFFECT:DelayedSmoke( color )
 
-	if not self.Emitter then return end
+	if not self.Emitter then
+		DebugEffect("ace_scaled_detonation DelayedSmoke:NoEmitter")
+		return
+	end
+	DebugEffect("ace_scaled_detonation DelayedSmoke:Enter")
 	color = color or RandomSmokeColor()
 	local radius = math.max( self.Radius * 0.8, 1.5 )
 	local plumeOrigin = ExplosionFlashOrigin( self, radius, -8 )
@@ -887,6 +940,7 @@ function EFFECT:DelayedSmoke( color )
 			Smoke:SetColor( ClampColor( color.r + colorRand.x ), ClampColor( color.g + colorRand.y ), ClampColor( color.b + colorRand.z ) )
 		end
 	end
+	DebugEffect("ace_scaled_detonation DelayedSmoke:Exit")
 end
 
 --[[---------------------------------------------------------
