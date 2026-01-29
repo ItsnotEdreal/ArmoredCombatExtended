@@ -33,6 +33,9 @@ function this:Configure(missile)
 	self.ViewConeCos = math.cos(math.rad(self.ViewCone))
 
 	local GuidEnt = missile.Launcher
+	if not IsValid(GuidEnt) then
+		GuidEnt = missile
+	end
 
 	if next(ACE.Opticals) then
 
@@ -44,7 +47,7 @@ function this:Configure(missile)
 			end
 
 			--Range: 250. Note im using squared distance. So 250 ^ 2 means distance is 250
-			if Optical:GetPos():DistToSqr(missile.Launcher:GetPos()) < 90000 ^ 2 and Optical:CPPIGetOwner() == missile.Launcher:CPPIGetOwner() then
+			if IsValid(missile.Launcher) and Optical:GetPos():DistToSqr(missile.Launcher:GetPos()) < 90000 ^ 2 and Optical:CPPIGetOwner() == missile.Launcher:CPPIGetOwner() then
 
 				--print("Attaching Nearest Computer...")
 				--debugoverlay.Cross(Optical:GetPos(), 10, 10, Color(255,100,0), true)

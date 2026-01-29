@@ -33,6 +33,7 @@ end
 local VisualScale = 1.3
 local FlashScale = 1.25
 local SmokeScale = 0.8
+local MAX_VISUAL_RADIUS = 25
 
 local function ExplosionFlashOrigin( effect, radius, extra )
 	extra = extra or 0
@@ -48,6 +49,7 @@ function EFFECT:Init( data )
 	self.Origin        = data:GetOrigin()
 	self.DirVec        = data:GetNormal()
 	self.Radius        = math.max( data:GetRadius()  / 39.4 ,1)
+	self.Radius        = math.min(self.Radius, MAX_VISUAL_RADIUS)
 	self.Emitter       = ParticleEmitter( self.Origin )
 
 	local GroundTr = { }
@@ -861,17 +863,17 @@ function EFFECT:DelayedSmoke( color )
 	color = color or RandomSmokeColor()
 	local radius = math.max( self.Radius * 0.8, 1.5 )
 	local plumeOrigin = ExplosionFlashOrigin( self, radius, -8 )
-	local steps = {0.85, 1.35}
+	local steps = {0.9}
 
 	for i, delayBase in ipairs( steps ) do
 		local Smoke = self.Emitter:Add( "particle/smokesprites_000" .. math.random(1,9), plumeOrigin )
 
 		if Smoke then
-			local life = math.Rand(2.5, 3.8) * (1 + i * 0.15)
+			local life = math.Rand(2.8, 4.2) * (1 + i * 0.1)
 			local sizeSeed = (3.5 + i * 2.8) * radius * SmokeScale * 0.95
 			StageParticle( Smoke, delayBase, life )
-			Smoke:SetStartAlpha( math.Rand(85, 140) )
-			Smoke:SetEndAlpha( math.Rand(25, 50) )
+			Smoke:SetStartAlpha( math.Rand(130, 190) )
+			Smoke:SetEndAlpha( math.Rand(60, 90) )
 			Smoke:SetStartSize( sizeSeed )
 			Smoke:SetEndSize( sizeSeed * math.Rand(1.1, 1.4) )
 			local Vel = VectorRand() * ((22 + i * 10) * radius * SmokeScale)

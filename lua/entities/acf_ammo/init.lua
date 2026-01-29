@@ -10,12 +10,123 @@ local GunTable  = ACF.Weapons.Guns
 local AmmoTable = ACF.Weapons.Ammo
 local LegacyAmmoTable = ACF.Weapons.LegacyAmmo
 
+local COOKOFF_THRESHOLD = 0.02
+local COOKOFF_MIN_DURATION = 0.45
+
 local function IsMachineGunAmmo( ent )
 	local bullet = ent and ent.BulletData or {}
 	local id = bullet.Id or ent.RoundId
 	local gun = (id and GunTable and GunTable[id]) or nil
 	local gunclass = (gun and gun.gunclass) or bullet.GunClass or ent.GunClass
 	return gunclass == "MG"
+end
+
+local GLATGM_TYPES = {
+	GLATGM = true,
+	["GLATGM-HE"] = true
+}
+
+local MISSILE_WARHEAD_OVERRIDES = {
+	GLATGM = "HEAT",
+	["GLATGM-HE"] = "HE"
+}
+
+local function IsMissileAmmo( ent )
+	local bullet = ent and ent.BulletData or {}
+	local id = bullet.Id or ent.RoundId
+	local roundType = bullet.Type or (ACF.RoundTypes and ACF.RoundTypes[id] and ACF.RoundTypes[id].Type) or nil
+	local gun = (id and GunTable and GunTable[id]) or nil
+	local gunclass = (gun and gun.gunclass) or bullet.GunClass or ent.GunClass
+	local classData = gunclass and GunClasses and GunClasses[gunclass] or nil
+
+	if GLATGM_TYPES[roundType] then
+		return true
+	end
+
+	if GLATGM_TYPES[id] then
+		return true
+	end
+
+	return (classData and classData.type == "missile") or false
+end
+
+local function ResolveWarheadType( bullet )
+	local roundType = bullet and bullet.Type or nil
+	local heatTypes = {
+		HEAT = true,
+		THEAT = true,
+		HEATFS = true,
+		THEATFS = true
+	}
+	local heTypes = {
+		HE = true,
+		HESH = true,
+		HEFS = true
+	}
+
+	if roundType and GLATGM_TYPES[roundType] then
+		return MISSILE_WARHEAD_OVERRIDES[roundType] or "HE"
+	end
+
+	if roundType and heatTypes[roundType] then
+		return roundType
+	end
+
+	if roundType and heTypes[roundType] then
+		return "HE"
+	end
+
+	if roundType and ACF.RoundTypes and ACF.RoundTypes[roundType] then
+		return roundType
+	end
+
+	return "HE"
+end
+
+local function ScheduleFinalExplosion( ent )
+	local now = CurTime()
+	ent.CookoffEnd = math.min(ent.CookoffEnd or now, now + 0.18)
+	ent.CookoffNext = now + 0.05
+end
+
+local function GetCookoffConfig( ent, severity )
+	local volume = math.max((ent.BulletData and ent.BulletData.RoundVolume) or 1, 1)
+	local sizeFactor = math.Clamp((volume ^ 0.5) / 15, 0, 1)
+	local ammoFrac = math.Clamp((ent.Ammo or 0) / math.max(ent.Capacity or 1, 1), 0, 1)
+	local severityScale = math.Clamp((severity or 0) / 0.2, 0, 1)
+	local isMG = IsMachineGunAmmo(ent)
+
+	local baseDuration = Lerp(sizeFactor, 2.2, 0.9)
+	local duration = Lerp(severityScale, baseDuration, baseDuration * 0.6) * Lerp(ammoFrac, 0.7, 1.1)
+	if isMG then
+		duration = duration * 2.4
+	end
+	duration = math.max(duration, COOKOFF_MIN_DURATION)
+
+	local baseDelay = Lerp(sizeFactor, 0.35, 0.08)
+	local minDelay = Lerp(sizeFactor, 0.1, 0.03)
+	baseDelay = Lerp(severityScale, baseDelay, baseDelay * 0.6)
+	minDelay = Lerp(severityScale, minDelay, minDelay * 0.6)
+	if isMG then
+		baseDelay = baseDelay * 0.75
+		minDelay = minDelay * 0.75
+	end
+
+	local roundsScale = Lerp(sizeFactor, 0.08, 0.02)
+	local maxRounds = math.Clamp(math.ceil((ent.Ammo or 0) * roundsScale), 4, 40)
+	if isMG then
+		maxRounds = math.Clamp(math.ceil(maxRounds * 4), 20, 220)
+	end
+	local minRounds = math.Clamp(math.ceil(maxRounds * 0.35), 2, maxRounds)
+
+	return {
+		SizeFactor = sizeFactor,
+		Duration = duration,
+		BaseDelay = baseDelay,
+		MinDelay = minDelay,
+		MaxRounds = maxRounds,
+		MinRounds = minRounds
+	}
 end
 
 local Inputs = {
@@ -125,7 +236,7 @@ do
 		HEFS	= true
 	}
 
-	function ENT:StartCookoff( Inflictor )
+	function ENT:StartCookoff( Inflictor, severity )
 		if self.CookoffActive then return end
 
 		self.Exploding    = true
@@ -133,15 +244,15 @@ do
 		self.Damaged      = true
 		self.DamageDelay  = ACF.CurTime
 
-		local Volume = math.max((self.BulletData and self.BulletData.RoundVolume) or 1, 1)
-		local SizeFactor = math.Clamp((Volume ^ 0.5) / 15, 0, 1)
+		local config = GetCookoffConfig( self, severity )
 
 		self.CookoffActive    = true
 		self.CookoffStart     = CurTime()
-		self.CookoffEnd       = self.CookoffStart + Lerp(SizeFactor, 2.2, 0.9) + math.Rand(0, 0.2)
-		self.CookoffBaseDelay = Lerp(SizeFactor, 0.35, 0.08)
-		self.CookoffMinDelay  = Lerp(SizeFactor, 0.1, 0.03)
-		self.CookoffMaxRounds = math.max(6, math.ceil( Lerp(SizeFactor, 8, 26) ))
+		self.CookoffEnd       = self.CookoffStart + config.Duration + math.Rand(0, 0.2)
+		self.CookoffBaseDelay = config.BaseDelay
+		self.CookoffMinDelay  = config.MinDelay
+		self.CookoffMaxRounds = config.MaxRounds
+		self.CookoffMinRounds = config.MinRounds
 		self.CookoffCount = 0
 		self.CookoffNext      = self.CookoffStart
 		self.CookoffHEToggle  = true
@@ -156,6 +267,12 @@ do
 
 		if self.Exploding or not self.IsExplosive then return HitRes end
 
+		if self.CookoffActive then
+			HitRes.Damage = 0
+			HitRes.Kill = false
+			return HitRes
+		end
+
 		if HEtbl[Type] then
 			if HitRes.Kill then
 				self:Remove()
@@ -164,10 +281,10 @@ do
 		end
 
 		local maxHealth = (self.ACF and self.ACF.MaxHealth) or 0
-		local cookoffThreshold = 0.03
 		local damageFrac = maxHealth > 0 and ((HitRes.Damage or 0) / maxHealth) or 0
+		local hpThreshold = 0.5
 
-		if damageFrac < cookoffThreshold then
+		if damageFrac < COOKOFF_THRESHOLD and (HitRes.Damage or 0) < hpThreshold then
 			local healthFrac = maxHealth > 0 and math.Clamp((self.ACF.Health or 0) / maxHealth, 0, 1) or 0
 			local newAmmo = math.ceil((self.Capacity or 0) * healthFrac)
 			if self.Ammo and newAmmo < self.Ammo then
@@ -175,57 +292,29 @@ do
 				self:UpdateMass()
 				self:UpdateOverlayText()
 			end
+			if HitRes.Kill then
+				self:Remove()
+			end
 			return HitRes
 		end
 
+		local severity = damageFrac
 		if HitRes.Kill then
-
-			if hook.Run("ACF_AmmoExplode", self, self.BulletData ) == false then return HitRes end
-
-			self.Exploding = true
-
-			if Inflictor and IsValid(Inflictor) and Inflictor:IsPlayer() then
-				self.Inflictor = Inflictor
-			end
-
-			if self.BulletData.Type == "Refill" then
-				self:Remove()
-			else
-				self:StartCookoff( Inflictor )
-			end
+			severity = math.max(severity, 0.5)
 		end
 
-		-- cookoff chance calculation
-		if self.Damaged then return HitRes end
+		if hook.Run("ACF_AmmoExplode", self, self.BulletData ) == false then return HitRes end
 
-		if table.IsEmpty( self.BulletData or {} ) then
+		self.Exploding = true
+
+		if Inflictor and IsValid(Inflictor) and Inflictor:IsPlayer() then
+			self.Inflictor = Inflictor
+		end
+
+		if self.BulletData.Type == "Refill" then
 			self:Remove()
 		else
-
-			local CMul	= 1  --30% Chance to detonate, 5% chance to cookoff
-			local DetRand	= 0
-
-			--Heat penetrators deal bonus damage to ammo, 90% chance to detonate, 15% chance to cookoff
-			if HEATtbl[Type] then
-				CMul = 6
-			elseif HEtbl[Type] then
-				CMul = 10
-			end
-
-			if self.BulletData.Type == "Refill" then
-				DetRand = 0.75
-			else
-				DetRand = math.Rand(0,1) * CMul
-			end
-
-
-			--Cookoff chance
-			if DetRand > 0.45 then --Passed chance for a cookoff.
-				self.Exploding = true
-				self:StartCookoff( Inflictor )
-			end
-
-
+			self:StartCookoff( Inflictor, severity )
 		end
 
 		return HitRes --This function needs to return HitRes
@@ -804,6 +893,12 @@ function ENT:Think()
 				local EndTime = self.CookoffEnd or Now
 
 				if Now >= EndTime or self.Ammo <= 0 then
+					if (self.CookoffCount or 0) < (self.CookoffMinRounds or 0) and self.Ammo > 0 then
+						self.CookoffEnd = Now + 0.2
+						self.CookoffNext = Now
+						self:NextThink( Now + 0.02 )
+						return
+					end
 					if not self.ExplosionPending then
 						self.ExplosionPending = true
 						if IsMachineGunAmmo( self ) then
@@ -815,7 +910,7 @@ function ENT:Think()
 							local delay = 0.03
 							timer.Simple(delay, function()
 								if not IsValid(self) then return end
-								self.CookoffScale = 0.35
+								self.CookoffScale = 0.4
 								self.CookoffExplosionPos = self.CookoffExplosionPos or self:LocalToWorld(self:OBBCenter())
 								ACF_ScaledExplosion( self, true )
 								self.CookoffExplosionPos = nil
@@ -829,7 +924,9 @@ function ENT:Think()
 
 					if self.CookoffCount < (self.CookoffMaxRounds or 1) and ACF.RoundTypes[CrateType] then
 
-						self:EmitSound( "acf_other/explosions/cookoff/cookOff" .. math.random(1,4) .. ".mp3", 550, math.max(140 - self.BulletData.PropMass * 35,35)  )
+						local isMG = IsMachineGunAmmo( self )
+
+						self:EmitSound( "acf_other/explosions/cookoff/cookOff" .. math.random(1,4) .. ".mp3", 250, math.max(140 - self.BulletData.PropMass * 35,35)  )
 						self.BulletCookSpeed	= self.BulletCookSpeed or ACF_MuzzleVelocity( self.BulletData.PropMass, self.BulletData.ProjMass / 2, self.Caliber )
 
 						self.BulletData.Tracer = 1
@@ -843,41 +940,56 @@ function ENT:Think()
 						self.BulletData.Gun	= self.BulletData.Gun	or self
 						self.BulletData.Crate	= self.BulletData.Crate or self:EntIndex()
 
-					self.CreateShell		= ACF.RoundTypes[CrateType].create
 					local CookoffBullet = table.Copy( self.BulletData )
 					CookoffBullet.ProjMass = (CookoffBullet.ProjMass or 0) * 0.5
 					CookoffBullet.PropMass = (CookoffBullet.PropMass or 0) * 0.5
 					CookoffBullet.FillerMass = (CookoffBullet.FillerMass or 0) * 0.75
 					CookoffBullet.MuzzleVel	= (CookoffBullet.MuzzleVel or 0) * 0.75
+					local CookoffType = CrateType
+					if IsMissileAmmo( self ) then
+						CookoffType = ResolveWarheadType( CookoffBullet )
+						CookoffBullet.Type = CookoffType
+					end
+					self.CreateShell = ACF.RoundTypes[CookoffType].create
 					self:CreateShell( CookoffBullet )
 
 						self.Ammo = self.Ammo - 1
 
-						timer.Simple(0.001, function()
-							if not IsValid(self) then return end
-							local Flash = EffectData()
-								Flash:SetAttachment( 1 )
-								Flash:SetOrigin( self.BulletData.Pos )
-								Flash:SetNormal( -vector_up )
-								Flash:SetRadius( self.BulletData.RoundVolume ^ 0.4 * 0.75 )
-							util.Effect( "ace_cookoff_puff", Flash )
+						if not isMG then
+							timer.Simple(0.001, function()
+								if not IsValid(self) then return end
+								local Flash = EffectData()
+									Flash:SetAttachment( 1 )
+									Flash:SetOrigin( self.BulletData.Pos )
+									Flash:SetNormal( -vector_up )
+									Flash:SetRadius( self.BulletData.RoundVolume ^ 0.4 * 0.75 )
+								util.Effect( "ace_cookoff_puff", Flash )
 
-							local HEFlash = EffectData()
-								HEFlash:SetOrigin( self.BulletData.Pos )
-								HEFlash:SetNormal( -vector_up )
-								HEFlash:SetRadius( math.Clamp(self.BulletData.RoundVolume ^ 0.4 * 0.5, 0.6, 6) )
-							util.Effect( "ACF_Scaled_Explosion", HEFlash )
-						end )
+								local HEFlash = EffectData()
+									HEFlash:SetOrigin( self.BulletData.Pos )
+									HEFlash:SetNormal( -vector_up )
+									HEFlash:SetRadius( math.Clamp(self.BulletData.RoundVolume ^ 0.4 * 0.5, 0.6, 6) )
+								util.Effect( "ACF_Scaled_Explosion", HEFlash )
+							end )
 
-						local HE       = self.BulletData.FillerMass	or 0
-						local Propel   = self.BulletData.PropMass	or 0
+							local HE       = self.BulletData.FillerMass	or 0
+							local Propel   = self.BulletData.PropMass	or 0
 						local HEWeight = ((  HE + Propel * ACF.APAmmoDetonateFactor * ( ACF.PBase / ACF.HEPower) ) * ACF.BoomMult)
 						local RunHE = self.CookoffHEToggle
 						self.CookoffHEToggle = not self.CookoffHEToggle
 
 						if HEWeight > 0 and RunHE then
-							local MiniWeight = HEWeight * 0.25
-							ACF_HE( self.BulletData.Pos , vector_origin , MiniWeight , MiniWeight , self.Inflictor , self, self )
+							local MiniWeight = HEWeight * 0.3
+							ACF_HE( self.BulletData.Pos , vector_origin , MiniWeight , MiniWeight , self.Inflictor , self, self, 0.5 )
+							timer.Simple(0.001, function()
+								if not IsValid(self) then return end
+								local HEFlash = EffectData()
+									HEFlash:SetOrigin( self.BulletData.Pos )
+									HEFlash:SetNormal( -vector_up )
+									HEFlash:SetRadius( math.Clamp(self.BulletData.RoundVolume ^ 0.4 * 0.8, 0.8, 10) )
+								util.Effect( "ACF_Scaled_Explosion", HEFlash )
+							end)
+						end
 						end
 
 						local Duration = math.max( (self.CookoffEnd or Now) - (self.CookoffStart or Now), 0.01 )
@@ -885,6 +997,9 @@ function ENT:Think()
 						local Delay = math.max( self.CookoffMinDelay or 0.05, (self.CookoffBaseDelay or 0.4) * math.exp(-4 * T) )
 						self.CookoffNext = Now + Delay
 						self.CookoffCount = self.CookoffCount + 1
+						if self.CookoffCount >= (self.CookoffMaxRounds or 1) then
+							ScheduleFinalExplosion( self )
+						end
 
 					else
 
@@ -894,6 +1009,7 @@ function ENT:Think()
 						self.CookoffNext = Now + Delay
 						if self.CookoffCount >= (self.CookoffMaxRounds or 1) then
 							self.CookoffEnd = math.min(self.CookoffEnd or Now, Now + 0.2)
+							ScheduleFinalExplosion( self )
 						end
 					end
 
