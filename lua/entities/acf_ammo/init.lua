@@ -10,6 +10,14 @@ local GunTable  = ACF.Weapons.Guns
 local AmmoTable = ACF.Weapons.Ammo
 local LegacyAmmoTable = ACF.Weapons.LegacyAmmo
 
+local function IsMachineGunAmmo( ent )
+	local bullet = ent and ent.BulletData or {}
+	local id = bullet.Id or ent.RoundId
+	local gun = (id and GunTable and GunTable[id]) or nil
+	local gunclass = (gun and gun.gunclass) or bullet.GunClass or ent.GunClass
+	return gunclass == "MG"
+end
+
 local Inputs = {
 	"Active"
 }
@@ -78,7 +86,7 @@ function ENT:ACF_Activate( Recalc )
 	end
 
 	local Armour	= EmptyMass * 1000 / self.ACF.Area / 0.78 --So we get the equivalent thickness of that prop in mm if all it's weight was a steel plate
-	local Health	= self.ACF.Volume / ACF.Threshold						--Setting the threshold of the prop Area gone
+	local Health	= (self.ACF.Volume / ACF.Threshold) / 20					--Ammo crates get reduced HP relative to props
 	local Percent	= 1
 
 	if Recalc and self.ACF.Health and self.ACF.MaxHealth then
@@ -147,6 +155,28 @@ do
 		local HitRes	= ACF_PropDamage( Entity, Energy, FrArea * Mul, Angle, Inflictor ) --Calling the standard damage prop function
 
 		if self.Exploding or not self.IsExplosive then return HitRes end
+
+		if HEtbl[Type] then
+			if HitRes.Kill then
+				self:Remove()
+			end
+			return HitRes
+		end
+
+		local maxHealth = (self.ACF and self.ACF.MaxHealth) or 0
+		local cookoffThreshold = 0.03
+		local damageFrac = maxHealth > 0 and ((HitRes.Damage or 0) / maxHealth) or 0
+
+		if damageFrac < cookoffThreshold then
+			local healthFrac = maxHealth > 0 and math.Clamp((self.ACF.Health or 0) / maxHealth, 0, 1) or 0
+			local newAmmo = math.ceil((self.Capacity or 0) * healthFrac)
+			if self.Ammo and newAmmo < self.Ammo then
+				self.Ammo = newAmmo
+				self:UpdateMass()
+				self:UpdateOverlayText()
+			end
+			return HitRes
+		end
 
 		if HitRes.Kill then
 
@@ -776,14 +806,21 @@ function ENT:Think()
 				if Now >= EndTime or self.Ammo <= 0 then
 					if not self.ExplosionPending then
 						self.ExplosionPending = true
-						local delay = 0.03
-						timer.Simple(delay, function()
-							if not IsValid(self) then return end
-							self.CookoffScale = 0.35
-							self.CookoffExplosionPos = self.CookoffExplosionPos or self:LocalToWorld(self:OBBCenter())
-							ACF_ScaledExplosion( self, true )
-							self.CookoffExplosionPos = nil
-						end)
+						if IsMachineGunAmmo( self ) then
+							timer.Simple(0.02, function()
+								if not IsValid(self) then return end
+								self:Remove()
+							end)
+						else
+							local delay = 0.03
+							timer.Simple(delay, function()
+								if not IsValid(self) then return end
+								self.CookoffScale = 0.35
+								self.CookoffExplosionPos = self.CookoffExplosionPos or self:LocalToWorld(self:OBBCenter())
+								ACF_ScaledExplosion( self, true )
+								self.CookoffExplosionPos = nil
+							end)
+						end
 					end
 					return
 				end
