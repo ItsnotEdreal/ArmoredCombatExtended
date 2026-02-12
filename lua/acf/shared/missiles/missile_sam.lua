@@ -549,7 +549,7 @@ ACF_defineGun("9M38M1 SAM", {							-- id
 	gunclass         = "SAM",
 	rack             = "1xRK",							-- Which rack to spawn this missile on?
 	length           = 220 * 2.53, --Convert to ammocrate units
-	caliber          = 20,								--Actual is 330. Had to reduce caliber because of shell customization ratio limits preventing not having a shell smaller than 50cm and thus having a huge warhead
+	caliber          = 33,								-- Real diameter (330 mm).
 	weight           = 710,								-- Don't scale down the weight though!
 	year             = 1981,
 	modeldiameter    = 32,--Already in ammocrate units
@@ -624,7 +624,7 @@ ACF_defineGun("5V55 SAM", {							-- id
 	gunclass         = "SAM",
 	rack             = "1xRK",							-- Which rack to spawn this missile on?
 	length           = 200 * 2.53, --Convert to ammocrate units
-	caliber          = 20,								--Actual is 514. Had to reduce caliber because of shell customization ratio limits preventing not having a shell smaller than 50cm and thus having a huge warhead
+	caliber          = 51.4,							-- Real diameter (514 mm).
 	weight           = 1480,								-- Don't scale down the weight though!
 	year             = 1981,
 	modeldiameter    = 32,--Already in ammocrate units

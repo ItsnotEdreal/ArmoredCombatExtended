@@ -299,7 +299,7 @@ ACF_defineGun("Mk82Bomb", {						-- id
 	gunclass		= "BOMB",
 	rack			= "1xRK",						-- Which rack to spawn this missile on?
 	length			= 225,
-	caliber			= 10.5,
+	caliber			= 27.3,
 	weight			= 215,							-- Don't scale down the weight though!
 	year			= 1976,
 	modeldiameter	= 12,					-- in cm
@@ -363,7 +363,7 @@ ACF_defineGun("Mk83Bomb", {						-- id
 	gunclass		= "BOMB",
 	rack			= "1xRK",						-- Which rack to spawn this missile on?
 	length			= 264,
-	caliber		= 17.0,
+	caliber		= 35.6,
 	weight			= 425,							-- Don't scale down the weight though!
 	year			= 1976,
 	modeldiameter	= 13,					-- in cm
@@ -424,7 +424,7 @@ ACF_defineGun("Mk84Bomb", {						-- id
 	gunclass		= "BOMB",
 	rack			= "1xRK",						-- Which rack to spawn this missile on?
 	length			= 320,
-	caliber		= 20.0,
+	caliber		= 45.7,
 	weight			= 900,							-- Don't scale down the weight though!
 	year			= 1976,
 	modeldiameter	= 20,					-- in cm

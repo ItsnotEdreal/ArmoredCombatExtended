@@ -27,7 +27,7 @@ ACF_defineGun("BGM-109 Tomahawk", {						-- id
 	gunclass         = "NAV",
 	rack             = "1xRK",						-- Which rack to spawn this missile on?
 	length           = 250 * 2.53, --Convert to ammocrate units
-	caliber          = 35.56,
+	caliber          = 51.8,
 	weight           = 1600,							-- Don't scale down the weight though!
 	year             = 1983,
 	modeldiameter    = 30, --Already in ammocrate units
@@ -111,7 +111,7 @@ ACF_defineGun("AGM-84 Harpoon", {						-- id
 	gunclass         = "NAV",
 	rack             = "1xRK",						-- Which rack to spawn this missile on?
 	length           = 150 * 2.53, --Convert to ammocrate units
-	caliber          = 34,
+	caliber          = 34.3,
 	weight           = 690,							-- Don't scale down the weight though!
 	year             = 1977,
 	modeldiameter    = 25, --Already in ammocrate units
@@ -196,7 +196,7 @@ ACF_defineGun("Storm Shadow ASM", {						-- id
 	gunclass         = "NAV",
 	rack             = "1xRK",						-- Which rack to spawn this missile on?
 	length           = 205 * 2.53, --Convert to ammocrate units
-	caliber          = 35.56,
+	caliber          = 48.0,
 	weight           = 1300,							-- Don't scale down the weight though!
 	year             = 2003,
 	modeldiameter    = 40, --Already in ammocrate units
@@ -363,7 +363,7 @@ ACF_defineGun("Black Shark Torp", {						-- id
 	gunclass         = "NAV",
 	rack             = "1xRK",							-- Which rack to spawn this missile on?
 	length           = 250 * 2.53, --Convert to ammocrate units,
-	caliber          = 15, --Unfortunately caliber determines the minimum length even above the max length var. For now has to be set lower than 1:1
+	caliber          = 53.3,
 	weight           = 1200,								-- Don't scale down the weight though!
 	rofmod           = 0.3,
 	year             = 2015,
@@ -439,7 +439,7 @@ ACF_defineGun("G7a Torp", {						-- id
 	gunclass         = "NAV",
 	rack             = "1xRK",							-- Which rack to spawn this missile on?
 	length           = 250 * 2.53, --Convert to ammocrate units,
-	caliber          = 15, --Unfortunately caliber determines the minimum length even above the max length var. For now has to be set lower than 1:1
+	caliber          = 53.3,
 	weight           = 1538,								-- Don't scale down the weight though!
 	rofmod           = 0.3,
 	year             = 1934,
@@ -515,7 +515,7 @@ ACF_defineGun("Mk13 Torp", {						-- id
 	gunclass         = "NAV",
 	rack             = "1xRK",							-- Which rack to spawn this missile on?
 	length           = 125 * 2.53, --Convert to ammocrate units,
-	caliber          = 15, --Unfortunately caliber determines the minimum length even above the max length var. For now has to be set lower than 1:1
+	caliber          = 57.0,
 	weight           = 1942,								-- Don't scale down the weight though!
 	rofmod           = 0.3,
 	year             = 2015,
@@ -585,7 +585,7 @@ ACF_defineGun("Mk54 Torp", {						-- id
 	gunclass         = "NAV",
 	rack             = "1xRK",							-- Which rack to spawn this missile on?
 	length           = 125 * 2.53, --Convert to ammocrate units,
-	caliber          = 7.5, --Unfortunately caliber determines the minimum length even above the max length var. For now has to be set lower than 1:1
+	caliber          = 32.4,
 	weight           = 1942,								-- Don't scale down the weight though!
 	rofmod           = 0.3,
 	year             = 2015,
@@ -662,7 +662,7 @@ ACF_defineGun("9M317ME SAM", {							-- id
 	gunclass         = "NAV",
 	rack             = "1xRK",							-- Which rack to spawn this missile on?
 	length           = 200 * 2.53, --Convert to ammocrate units
-	caliber          = 20,								--Actual is 380. Had to reduce caliber because of shell customization ratio limits preventing not having a shell smaller than 50cm and thus having a huge warhead
+	caliber          = 38,								-- Real diameter (380 mm).
 	weight           = 1040,								-- Don't scale down the weight though!
 	year             = 1981,
 	modeldiameter    = 32,--Already in ammocrate units

@@ -27,7 +27,7 @@ ACF_defineGun("Scaled BGM-109 Tomahawk", {						-- id
 	gunclass         = "mNAV",
 	rack             = "1xRK",						-- Which rack to spawn this missile on?
 	length           = 250 * 2.53, --Convert to ammocrate units
-	caliber          = 35.56,
+	caliber          = 51.8,
 	weight           = 1600,							-- Don't scale down the weight though!
 	year             = 1983,
 	modeldiameter    = 15, --Already in ammocrate units
@@ -111,7 +111,7 @@ ACF_defineGun("Scaled AGM-84 Harpoon", {						-- id
 	gunclass         = "mNAV",
 	rack             = "1xRK",						-- Which rack to spawn this missile on?
 	length           = 150 * 2.53, --Convert to ammocrate units
-	caliber          = 34,
+	caliber          = 34.3,
 	weight           = 690,							-- Don't scale down the weight though!
 	year             = 1977,
 	modeldiameter    = 12.5, --Already in ammocrate units
@@ -196,7 +196,7 @@ ACF_defineGun("Scaled Storm Shadow ASM", {						-- id
 	gunclass         = "mNAV",
 	rack             = "1xRK",						-- Which rack to spawn this missile on?
 	length           = 205 * 2.53, --Convert to ammocrate units
-	caliber          = 35.56,
+	caliber          = 48.0,
 	weight           = 1300,							-- Don't scale down the weight though!
 	year             = 2003,
 	modeldiameter    = 20, --Already in ammocrate units
@@ -361,7 +361,7 @@ ACF_defineGun("Scaled Black Shark Torp", {						-- id
 	gunclass         = "mNAV",
 	rack             = "1xRK",							-- Which rack to spawn this missile on?
 	length           = 250 * 2.53, --Convert to ammocrate units,
-	caliber          = 15, --Unfortunately caliber determines the minimum length even above the max length var. For now has to be set lower than 1:1
+	caliber          = 53.3,
 	weight           = 1200,								-- Don't scale down the weight though!
 	rofmod           = 0.3,
 	year             = 2015,
@@ -436,7 +436,7 @@ ACF_defineGun("Scaled G7a Torp", {						-- id
 	gunclass         = "mNAV",
 	rack             = "1xRK",							-- Which rack to spawn this missile on?
 	length           = 250 * 2.53, --Convert to ammocrate units,
-	caliber          = 15, --Unfortunately caliber determines the minimum length even above the max length var. For now has to be set lower than 1:1
+	caliber          = 53.3,
 	weight           = 1538,								-- Don't scale down the weight though!
 	rofmod           = 0.3,
 	year             = 1934,
@@ -511,7 +511,7 @@ ACF_defineGun("Scaled Mk13 Torp", {						-- id
 	gunclass         = "mNAV",
 	rack             = "1xRK",							-- Which rack to spawn this missile on?
 	length           = 125 * 2.53, --Convert to ammocrate units,
-	caliber          = 15, --Unfortunately caliber determines the minimum length even above the max length var. For now has to be set lower than 1:1
+	caliber          = 57.0,
 	weight           = 1942,								-- Don't scale down the weight though!
 	rofmod           = 0.3,
 	year             = 2015,
@@ -580,7 +580,7 @@ ACF_defineGun("Scaled 9M317ME SAM", {							-- id
 	gunclass         = "mNAV",
 	rack             = "1xRK",							-- Which rack to spawn this missile on?
 	length           = 200 * 2.53, --Convert to ammocrate units
-	caliber          = 20,								--Actual is 380. Had to reduce caliber because of shell customization ratio limits preventing not having a shell smaller than 50cm and thus having a huge warhead
+	caliber          = 38,								-- Real diameter (380 mm).
 	weight           = 1040,								-- Don't scale down the weight though!
 	year             = 1981,
 	modeldiameter    = 15,--Already in ammocrate units
@@ -655,7 +655,7 @@ ACF_defineGun("Scaled 5V55 SAM", {							-- id
 	gunclass         = "mNAV",
 	rack             = "1xRK",							-- Which rack to spawn this missile on?
 	length           = 200 * 2.53, --Convert to ammocrate units
-	caliber          = 20,								--Actual is 514. Had to reduce caliber because of shell customization ratio limits preventing not having a shell smaller than 50cm and thus having a huge warhead
+	caliber          = 51.4,							-- Real diameter (514 mm).
 	weight           = 1480,								-- Don't scale down the weight though!
 	year             = 1981,
 	modeldiameter    = 15,--Already in ammocrate units

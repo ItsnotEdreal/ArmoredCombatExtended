@@ -250,7 +250,7 @@ ACF_defineGun("AIM-54 AAM", {							-- id
 	gunclass         = "AAM",
 	rack             = "1xRK",							-- Which rack to spawn this missile on?
 	length           = 153 * 2.53, --Convert to ammocrate units
-	caliber          = 20,								--Actual is 514. Had to reduce caliber because of shell customization ratio limits preventing not having a shell smaller than 50cm and thus having a huge warhead
+	caliber          = 38,							-- Real diameter (380 mm).
 	weight           = 463,								-- Don't scale down the weight though!
 	year             = 1974,
 	modeldiameter    = 30,--Already in ammocrate units
@@ -323,7 +323,7 @@ ACF_defineGun("SRAAM AAM", {								-- id
 	gunclass         = "AAM",
 	rack             = "2x SRAAM",							-- Which rack to spawn this missile on?
 	length           = 115 * 2.53, --Convert to ammocrate units
-	caliber          = 10,		--Actual is 165. Had to reduce caliber because of shell customization ratio limits preventing not having a shell smaller than 50cm and thus having a huge warhead	
+	caliber          = 16.5,	-- Real diameter (165 mm).
 	weight           = 70,								-- Don't scale down the weight though! --was 152, I cut that down to 1/2 an AIM-7s weight
 	year             = 1984,
 	modeldiameter    = 8,--Already in ammocrate units
@@ -695,7 +695,7 @@ ACF_defineGun("R-73 AAM", {								-- id
 	gunclass         = "AAM",
 	rack             = "1xRK",							-- Which rack to spawn this missile on?
 	length           = 116 * 2.53, --Convert to ammocrate units
-	caliber          = 10,		--Actual is 165. Had to reduce caliber because of shell customization ratio limits preventing not having a shell smaller than 50cm and thus having a huge warhead	
+	caliber          = 16.5,	-- Real diameter (165 mm).
 	weight           = 105,								-- Don't scale down the weight though! --was 152, I cut that down to 1/2 an AIM-7s weight
 	year             = 1984,
 	modeldiameter    = 15,--Already in ammocrate units
@@ -917,7 +917,7 @@ ACF_defineGun("R-33 AAM", {							-- id
 	gunclass         = "AAM",
 	rack             = "1xRK",							-- Which rack to spawn this missile on?
 	length           = 163 * 2.53, --Convert to ammocrate units
-	caliber          = 20,		--Actual is 380. Had to reduce caliber because of shell customization ratio limits preventing not having a shell smaller than 50cm and thus having a huge warhead
+	caliber          = 38,		-- Real diameter (380 mm).
 	weight           = 490,								-- Don't scale down the weight though!
 	year             = 1981,
 	modeldiameter    = 27,--Already in ammocrate units
