@@ -284,6 +284,10 @@ do
 			v.acflastupdatemass = ACF.CurTime
 		end
 
+		obj.acfphystotal = obj.acfphystotal or PhysMass
+		obj.acftotal = obj.acftotal or Mass
+		obj.acflastupdatemass = ACF.CurTime
+
 		if pwr then
 			--Get mass Material composition here
 			for material, tablemass in pairs(Compositions) do
@@ -297,7 +301,12 @@ do
 				end
 
 				--Gets the actual material percent of the contraption
-				PercentMat[material] = ( MatSums[material] / obj.acftotal ) or 0
+				local totalMass = obj.acftotal or Mass
+				if totalMass <= 0 then
+					PercentMat[material] = 0
+				else
+					PercentMat[material] = MatSums[material] / totalMass
+				end
 
 			end
 		end
@@ -709,3 +718,901 @@ if SERVER then
 		end
 	end
 end
+
+-- ============================================================
+-- ACE points/cost helpers
+-- ============================================================
+
+-- Build a consistent description for ACE convars.
+function ACE_ConVarHelp(desc)
+	return "ACE - " .. desc
+end
+
+-- Helper: short IsValid wrapper for entities.
+function ACE_IsEnt(ent)
+	return IsValid(ent)
+end
+
+-- Check whether an entity is a Wiremod class.
+function ACE_IsWireEntity(ent)
+	if not ACE_IsEnt(ent) then return false end
+	local cls = ent:GetClass()
+	if not isstring(cls) then return false end
+	return cls:sub(1, 10) == "gmod_wire_"
+end
+
+-- Check whether an entity is a missile entity.
+function ACE_IsMissileEntity(ent)
+	if not ACE_IsEnt(ent) then return false end
+	local cls = ent:GetClass()
+	return cls == "ace_missile" or cls == "acf_missile"
+end
+
+ACE.ArmorClasses = ACE.ArmorClasses or {
+	prop_physics = true,
+	primitive_shape = true,
+	primitive_airfoil = true,
+	primitive_rail_slider = true,
+	primitive_slider = true,
+	primitive_ladder = true
+}
+
+ACE.ClassToType = ACE.ClassToType or {
+	acf_engine = "Engines",
+	acf_gearbox = "Engines",
+	acf_fueltank = "Ignore",
+	acf_ammo = "Ammo",
+
+	acf_gun = "Firepower",
+	acf_rack = "Firepower",
+
+	ace_crewseat_gunner = "Crew",
+	ace_crewseat_loader = "Crew",
+	ace_crewseat_driver = "Crew",
+
+	ace_rwr_dir = "Electronics",
+	ace_rwr_sphere = "Electronics",
+	acf_missileradar = "Electronics",
+	acf_opticalcomputer = "Electronics",
+	ace_ecm = "Electronics",
+	ace_trackingradar = "Electronics",
+	ace_searchradar = "Electronics",
+	ace_irst = "Electronics",
+	ace_sonar = "Electronics",
+	ace_gforce_meter = "Electronics",
+	ace_vheat_source = "Electronics",
+	ace_wind_sensor = "Electronics"
+}
+
+ACE.PointSubsystems = ACE.PointSubsystems or {
+	"Engines",
+	"Firepower",
+	"Ammo",
+	"Crew",
+	"Electronics"
+}
+
+-- Resolve point category for an entity class.
+function ACE_GetPtsType(className)
+	if ACE.ArmorClasses[className] then return "Armor" end
+	return ACE.ClassToType[className] or "Ignore"
+end
+
+-- Validate armor scan results.
+function ACE_IsValidArmorResult(front, side)
+	if not front or not side then return false end
+	if front ~= front or side ~= side then return false end
+	if front <= 0 or side <= 0 then return false end
+	return true
+end
+
+-- Resolve the ammo type multiplier for cost/points.
+function ACE_GetAmmoTypeFactor(ammoType)
+	local factors = ACE.AmmoTypeFactors
+	return factors and factors[ammoType] or 1
+end
+
+-- Determine whether an ammo type should use HE utility scaling.
+function ACE_IsHEAmmoType(ammoType)
+	return ammoType == "HE" or ammoType == "HEFS" or ammoType == "CHE"
+end
+
+-- Compute ready rack capacity for a caliber.
+function ACE_GetReadyRackCap(calMm)
+	local cfg = ACE.AmmoCostConfig or {}
+	local readyBase = cfg.ReadyRackBase or 0
+	if readyBase <= 0 then return 0 end
+
+	local pivot    = cfg.ReadyRackPivot or 0
+	local lowBoost = cfg.ReadyRackLowBoost or 0
+
+	local baseCap = readyBase / math.max(calMm, 1)
+
+	if pivot > 0 and lowBoost > 0 and calMm < pivot then
+		local ratio = (pivot - calMm) / pivot
+		baseCap = baseCap * (1 + lowBoost * ratio)
+	end
+
+	return math.floor(baseCap + 0.5)
+end
+
+-- Calculate per-round points (no RPS factors) for ammo allocation weighting.
+function ACE_GetAmmoRoundPoints(bdata)
+	if not bdata then return 0 end
+
+	local maxPen = ACE_GetAmmoMaxPen(bdata)
+	local blastMass = ACE_GetAmmoBlastMass(bdata)
+	if maxPen <= 0 and blastMass <= 0 then return 0 end
+
+	local calMm = ACE_GetAmmoCaliberMm(bdata)
+	if calMm <= 0 then return 0 end
+
+	local typeFactor = ACE_GetAmmoTypeFactor(bdata.Type)
+	if typeFactor <= 0 then return 0 end
+
+	local cfg = ACE.AmmoCostConfig or {}
+	local refPen = cfg.RefPen or 0
+	local refCal = cfg.RefCaliber or 0
+	local baseRound = cfg.BaseRoundPts or 0
+	if refPen <= 0 or refCal <= 0 or baseRound <= 0 then return 0 end
+
+	local penExp = cfg.PenExp or 1
+	local blastExp = cfg.BlastExp or 1
+	local blastWeight = cfg.BlastWeight or 0
+	local refBlast = cfg.RefBlastMass or 0
+
+	local penFactor = (maxPen / refPen) ^ penExp
+	local blastFactor = 0
+	if blastMass > 0 and refBlast > 0 then
+		blastFactor = (blastMass / refBlast) ^ blastExp
+	end
+
+	local utilFactor = 0
+	if ACE_IsHEAmmoType(bdata.Type) and blastMass > 0 then
+		local utilWeight = cfg.HeUtilWeight or 0
+		local utilExp = cfg.HeUtilExp or 1
+		utilFactor = (blastMass / math.max(calMm, 1)) ^ utilExp * utilWeight
+	end
+
+	local threatFactor = penFactor + blastFactor * blastWeight + utilFactor
+	if threatFactor <= 0 then return 0 end
+
+	local calFactor = calMm / refCal
+
+	return baseRound * threatFactor * calFactor * typeFactor
+end
+
+-- Calculate threat weight for ready-rack allocation.
+function ACE_GetAmmoThreatWeight(bdata)
+	if not bdata then return 0 end
+
+	local maxPen = ACE_GetAmmoMaxPen(bdata)
+	local blastMass = ACE_GetAmmoBlastMass(bdata)
+	if maxPen <= 0 and blastMass <= 0 then return 0 end
+
+	local cfg = ACE.AmmoCostConfig or {}
+	local refPen = cfg.RefPen or 0
+	local refBlast = cfg.RefBlastMass or 0
+	if refPen <= 0 then return 0 end
+
+	local penExp = cfg.PenExp or 1
+	local blastExp = cfg.BlastExp or 1
+	local blastWeight = cfg.BlastWeight or 0
+
+	local penFactor = (maxPen / refPen) ^ penExp
+	local blastFactor = 0
+	if blastMass > 0 and refBlast > 0 then
+		blastFactor = (blastMass / refBlast) ^ blastExp
+	end
+
+	local utilFactor = 0
+	if ACE_IsHEAmmoType(bdata.Type) and blastMass > 0 then
+		local calMm = ACE_GetAmmoCaliberMm(bdata)
+		if calMm > 0 then
+			local utilWeight = cfg.HeUtilWeight or 0
+			local utilExp = cfg.HeUtilExp or 1
+			utilFactor = (blastMass / math.max(calMm, 1)) ^ utilExp * utilWeight
+		end
+	end
+
+	return penFactor + blastFactor * blastWeight + utilFactor
+end
+
+-- Compute sustained rounds per second for a gun/rack.
+function ACE_GetEntRps(ent)
+	local reload = ent.ReloadTime
+	if reload and reload > 0 then return 1 / reload end
+
+	local rof = ent.RateOfFire
+	if rof and rof > 0 then return rof / 60 end
+
+	return 0
+end
+
+-- Collect per-gun RPS totals and rack entities for a contraption.
+function ACE_BuildGunRpsAndRacks(ents)
+	local gunRpsById, racks = {}, {}
+
+	for _, ent in ipairs(ents) do
+		if ACE_IsEnt(ent) then
+			local cls = ent:GetClass()
+			if cls == "acf_gun" then
+				local id = ent.Id
+				local rps = ACE_GetEntRps(ent)
+				if id and rps > 0 then
+					gunRpsById[id] = (gunRpsById[id] or 0) + rps
+				end
+			elseif cls == "acf_rack" then
+				racks[#racks + 1] = ent
+			end
+		end
+	end
+
+	return gunRpsById, racks
+end
+
+-- Extract HE filler mass from bullet data.
+function ACE_GetAmmoBlastMass(bdata)
+	if not bdata then return 0 end
+	return tonumber(bdata.BoomFillerMass) or tonumber(bdata.FillerMass) or 0
+end
+
+-- Resolve ammo caliber in millimeters.
+function ACE_GetAmmoCaliberMm(bdata)
+	if not bdata then return 0 end
+
+	local best = math.max(
+		bdata.Caliber or 0,
+		bdata.SlugCaliber or 0,
+		bdata.SlugCaliber2 or 0,
+		bdata.JetCaliber or 0
+	)
+
+	if best <= 0 and bdata.Id then
+		best = ACF_GetGunValue(bdata.Id, "caliber") or 0
+	end
+
+	return best * 10
+end
+
+-- Resolve maximum penetration from bullet data.
+function ACE_GetAmmoMaxPen(bdata)
+	if not bdata then return 0 end
+
+	local maxPen = tonumber(bdata.MaxPen) or 0
+	if bdata.MaxPen2 then
+		maxPen = math.max(maxPen, tonumber(bdata.MaxPen2) or 0)
+	end
+	if maxPen > 0 then return maxPen end
+
+	local rtype = bdata.Type
+	local round = rtype and ACF and ACF.RoundTypes and ACF.RoundTypes[rtype]
+	if round and round.getDisplayData then
+		local ok, display = pcall(round.getDisplayData, bdata)
+		if ok and istable(display) then
+			maxPen = math.max(maxPen, display.MaxPen or 0, display.MaxPen2 or 0)
+		end
+	end
+	if maxPen > 0 then return maxPen end
+
+	local filler  = bdata.BoomFillerMass or bdata.FillerMass or 0
+	local hePower = ACF and ACF.HEPower or 0
+	local blastDiv = ACF and ACF.HEBlastPenetration or 0
+	if filler <= 0 or hePower <= 0 or blastDiv <= 0 then return 0 end
+
+	return (filler * hePower) / blastDiv
+end
+
+-- Collect entities belonging to a contraption.
+function ACE_GetContraptionEntities(con, fallbackEnt)
+	local ents = {}
+	if con and con.ents then
+		for ent in pairs(con.ents) do
+			if ACE_IsEnt(ent) then ents[#ents + 1] = ent end
+		end
+	end
+	if #ents == 0 and ACE_IsEnt(fallbackEnt) then ents[1] = fallbackEnt end
+	return ents
+end
+
+-- Allocate ready-rack rounds across ammo crates.
+function ACE_BuildAmmoReadyAlloc(ents)
+	local cfg = ACE.AmmoCostConfig or {}
+	if (cfg.ReadyRackBase or 0) <= 0 then return nil end
+
+	local groups = {}
+	-- Group ammo crates by caliber and weight by per-round cost.
+
+	for _, ent in ipairs(ents) do
+		if ACE_IsEnt(ent) and ent:GetClass() == "acf_ammo" then
+			local bdata = ent.BulletData
+			if bdata then
+				local rounds = ent.Capacity or 0
+				if rounds > 0 then
+					local ammoId = bdata.Id
+					if ammoId then
+						local calMm = ACE_GetAmmoCaliberMm(bdata)
+						if calMm > 0 then
+							local group = groups[calMm]
+							if not group then
+								group = { calMm = calMm, total = 0, entries = {} }
+								groups[calMm] = group
+							end
+
+						local threat = ACE_GetAmmoThreatWeight(bdata)
+						local weight = threat * rounds
+							group.total = group.total + math.max(weight, 0)
+							group.entries[#group.entries + 1] = {
+								ent = ent,
+								rounds = rounds,
+								weight = weight
+							}
+						end
+					end
+				end
+			end
+		end
+	end
+
+	local alloc = {}
+
+	for _, group in pairs(groups) do
+		local total = group.total or 0
+		if total > 0 then
+			local readyCap = ACE_GetReadyRackCap(group.calMm)
+			if readyCap > 0 then
+				local entries = {}
+				local remaining = readyCap
+				-- Use fractional remainders to distribute the leftover rounds.
+
+				for _, entry in ipairs(group.entries) do
+					local weight = entry.weight or 0
+					local raw = 0
+					if weight > 0 then
+						raw = readyCap * weight / total
+					end
+					local base = math.floor(raw)
+					local capped = math.min(base, entry.rounds)
+					remaining = remaining - capped
+					entries[#entries + 1] = {
+						ent = entry.ent,
+						rounds = entry.rounds,
+						ready = capped,
+						frac = raw - base
+					}
+				end
+
+				table.sort(entries, function(a, b)
+					if a.frac == b.frac then
+						if a.rounds == b.rounds then return tostring(a.ent) < tostring(b.ent) end
+						return a.rounds < b.rounds
+					end
+					return a.frac > b.frac
+				end)
+
+				for _, entry in ipairs(entries) do
+					if remaining <= 0 then break end
+					if entry.ready < entry.rounds then
+						entry.ready = entry.ready + 1
+						remaining = remaining - 1
+					end
+				end
+
+				for _, entry in ipairs(entries) do
+					alloc[entry.ent] = entry.ready
+				end
+			end
+		end
+	end
+
+	return next(alloc) and alloc or nil
+end
+
+
+
+-- ============================================================
+-- ACE parsing/get helpers
+-- ============================================================
+
+-- Resolve a contraption wrapper for an entity.
+function ACE_GetContraptionFromEntity(ent)
+	if not ACE_IsEnt(ent) or not ent.GetContraption then return end
+	local con = ent:GetContraption()
+	if not con or not con.ents or table.IsEmpty(con.ents) then return end
+	return con
+end
+
+-- Resolve contraption owner for messages.
+function ACE_GetContraptionOwner(con)
+	if not con then return nil end
+	local base = con.GetACEBaseplate and con:GetACEBaseplate()
+	if not ACE_IsEnt(base) or not base.CPPIGetOwner then return nil end
+	local owner = base:CPPIGetOwner()
+	return ACE_IsEnt(owner) and owner or nil
+end
+
+-- Safely format an owner name.
+function ACE_GetOwnerName(owner)
+	return ACE_IsEnt(owner) and owner:Nick() or "Unknown"
+end
+
+-- Build a parent chain summary for debug logs.
+function ACE_GetEntChainSummary(ent, maxDepth)
+	if not ACE_IsEnt(ent) then return "?" end
+	local parts = {}
+	local cur = ent
+	local depth = 0
+	local limit = maxDepth or 4
+	while ACE_IsEnt(cur) and depth <= limit do
+		parts[#parts + 1] = string.format("%s(%d)", cur:GetClass(), cur:EntIndex())
+		cur = cur:GetParent()
+		depth = depth + 1
+	end
+	return table.concat(parts, " <- ")
+end
+
+-- Format a position/angle tuple for dupe signatures.
+function ACE_FormatDupeTransform(pos, ang)
+	if pos and pos.x ~= nil and pos.y ~= nil and pos.z ~= nil then
+		pos = string.format("%.3f,%.3f,%.3f", pos.x, pos.y, pos.z)
+	end
+
+	if ang and ang.p ~= nil and ang.y ~= nil and ang.r ~= nil then
+		ang = string.format("%.2f,%.2f,%.2f", ang.p, ang.y, ang.r)
+	end
+
+	return tostring(pos or ""), tostring(ang or "")
+end
+
+function ACE_FormatArmorKey(material, ductility, armour, maxArmour, mass)
+	mass = mass or 0 -- shut up linter
+	-- Cache signatures should ignore runtime mass drift.
+	return string.format(
+		"mat=%s|duct=%.3f|arm=%.2f|max=%.2f",
+		tostring(material or ""),
+		tonumber(ductility) or 0,
+		tonumber(armour) or 0,
+		tonumber(maxArmour) or 0
+	)
+end
+
+local function ACE_ShouldIncludeArmorSignature(ent)
+	if not IsValid(ent) then return false end
+
+	local cls = ent:GetClass() or ""
+	if cls:find("gmod_wire_", 1, true) then return false end
+	if cls:find("starfall", 1, true) then return false end
+
+	if ent.RenderOverride and tostring(ent.RenderOverride):find("MakeSpherical") then
+		return false
+	end
+
+	if ACE_GetPtsType and ACE_GetPtsType(cls) == "Armor" then return true end
+
+	if cls == "prop_physics" or cls == "primitive_shape" then
+		local acf = ent.ACF
+		if acf and ((acf.Armour or acf.Armor) or (acf.MaxArmour or acf.MaxArmor)) then
+			return true
+		end
+	end
+
+	return false
+end
+
+-- Build a signature for dupe cache lookups.
+function ACE_GetDupeSignature(dupe, created)
+	if not util or not util.SHA256 then return nil end
+
+	local entData = dupe and (dupe.Entities or dupe.Ents or dupe.EntityList or (dupe.Dupe and dupe.Dupe.Entities))
+	if istable(entData) then
+		local parts = {}
+
+		for _, data in pairs(entData) do
+			if istable(data) then
+				local class = data.Class or data.class or "unknown"
+				local model = data.Model or data.model or ""
+
+				local mods = data.EntityMods or data.entitymods
+				local acfSettings = mods and mods.acfsettings
+				local massMod = mods and mods.mass
+				local acf = data.ACF or data.acf
+
+				local material = (acfSettings and (acfSettings.Material or acfSettings.material)) or (acf and (acf.Material or acf.material))
+				local ductility = (acfSettings and (acfSettings.Ductility or acfSettings.ductility)) or (acf and (acf.Ductility or acf.ductility))
+				local armour = acf and (acf.Armour or acf.Armor)
+				local maxArmour = acf and (acf.MaxArmour or acf.MaxArmor)
+				local mass = massMod and (massMod.Mass or massMod.mass)
+				local pos = data.Pos or data.pos
+				local ang = data.Angle or data.angle or data.Ang
+				local posKey, angKey = ACE_FormatDupeTransform(pos, ang)
+
+				parts[#parts + 1] = table.concat({
+					class,
+					model,
+					ACE_FormatArmorKey(material, ductility, armour, maxArmour, mass),
+					posKey,
+					angKey
+				}, "|")
+			end
+		end
+
+		table.sort(parts)
+		if #parts > 0 then
+			return tostring(ACE.DupeArmorCacheVersion) .. ":ents:" .. util.SHA256(table.concat(parts, ";"))
+		end
+	end
+
+	if istable(created) then
+		local parts = {}
+
+		local refEnt
+		for _, ent in pairs(created) do
+			if ACE_ShouldIncludeArmorSignature(ent) then
+				refEnt = ent
+				break
+			end
+		end
+
+		for _, ent in pairs(created) do
+			if ACE_ShouldIncludeArmorSignature(ent) then
+				local class = ent:GetClass() or "unknown"
+				local model = ent:GetModel() or ""
+
+				local acf = ent.ACF
+				local material = acf and acf.Material
+				local ductility = acf and acf.Ductility
+				local armour = acf and (acf.Armour or acf.Armor)
+				local maxArmour = acf and (acf.MaxArmour or acf.MaxArmor)
+
+				local mass = 0
+				local phys = ent:GetPhysicsObject()
+				if IsValid(phys) then mass = phys:GetMass() end
+
+				local posKey, angKey = "", ""
+				if IsValid(refEnt) then
+					local relPos = refEnt:WorldToLocal(ent:GetPos())
+					local relAng = refEnt:WorldToLocalAngles(ent:GetAngles())
+					posKey, angKey = ACE_FormatDupeTransform(relPos, relAng)
+				end
+
+				parts[#parts + 1] = table.concat({
+					class,
+					model,
+					ACE_FormatArmorKey(material, ductility, armour, maxArmour, mass),
+					posKey,
+					angKey
+				}, "|")
+			end
+		end
+
+		table.sort(parts)
+		if #parts > 0 then
+			return tostring(ACE.DupeArmorCacheVersion) .. ":spawn:" .. util.SHA256(table.concat(parts, ";"))
+		end
+	end
+
+	return nil
+end
+
+-- Build a signature for created entities using a fixed reference.
+local function ACE_BuildCreatedSignature(created, refEnt, wantInfo)
+	if not util or not util.SHA256 then return nil end
+	if not istable(created) then return nil end
+
+	refEnt = refEnt or nil
+	local parts = {}
+	local included = {}
+	local sum = Vector(0, 0, 0)
+	local count = 0
+
+	for _, ent in pairs(created) do
+		if ACE_ShouldIncludeArmorSignature(ent) then
+			included[#included + 1] = ent
+			sum = sum + ent:GetPos()
+			count = count + 1
+		end
+	end
+
+	if count == 0 then return nil end
+	local center = sum / count
+
+	local fallbackRef
+	local refToken = ""
+	if true then
+		local candidates = {}
+		for _, ent in ipairs(included) do
+			local class = ent:GetClass() or "unknown"
+			local model = ent:GetModel() or ""
+			local acf = ent.ACF
+			local material = acf and acf.Material
+			local ductility = acf and acf.Ductility
+			local armour = acf and (acf.Armour or acf.Armor)
+			local maxArmour = acf and (acf.MaxArmour or acf.MaxArmor)
+			local dist = (ent:GetPos() - center):Length()
+
+			local token = table.concat({
+				class,
+				model,
+				ACE_FormatArmorKey(material, ductility, armour, maxArmour, 0),
+				string.format("%.1f", dist)
+			}, "|")
+			candidates[#candidates + 1] = { ent = ent, token = token }
+		end
+
+		if #candidates > 0 then
+			table.sort(candidates, function(a, b) return a.token < b.token end)
+			fallbackRef = candidates[1].ent
+			refToken = candidates[1].token
+		end
+	end
+
+	if not IsValid(fallbackRef) then return nil end
+
+	for _, ent in ipairs(included) do
+		local class = ent:GetClass() or "unknown"
+		local model = ent:GetModel() or ""
+
+		local acf = ent.ACF
+		local material = acf and acf.Material
+		local ductility = acf and acf.Ductility
+		local armour = acf and (acf.Armour or acf.Armor)
+		local maxArmour = acf and (acf.MaxArmour or acf.MaxArmor)
+
+		local posKey = ""
+
+		parts[#parts + 1] = table.concat({
+			class,
+			model,
+			ACE_FormatArmorKey(material, ductility, armour, maxArmour, 0),
+			posKey
+		}, "|")
+	end
+
+	table.sort(parts)
+	if #parts == 0 then return nil end
+
+	local hash = util.SHA256(table.concat(parts, ";"))
+	local key = tostring(ACE.DupeArmorCacheVersion) .. ":spawn:" .. hash
+	if wantInfo then
+		return key, {
+			count = count,
+			ref = refToken,
+			hash = hash,
+			first = parts[1],
+			last = parts[#parts]
+		}
+	end
+
+	return key
+end
+
+-- Build a signature for created entities using a fixed reference.
+function ACE_GetCreatedSignature(created, refEnt)
+	return ACE_BuildCreatedSignature(created, refEnt, false)
+end
+
+-- Build a signature plus debug info for created entities.
+function ACE_GetCreatedSignatureInfo(created, refEnt)
+	return ACE_BuildCreatedSignature(created, refEnt, true)
+end
+
+ACE.DupeSubsystemCacheVersion = ACE.DupeSubsystemCacheVersion or 1
+
+-- Check if a class should participate in a subsystem signature.
+local function ACE_IsSubsystemClass(subsystem, className)
+	if subsystem == "Ammo" then
+		return className == "acf_ammo" or className == "acf_gun" or className == "acf_rack"
+	end
+
+	if subsystem == "Firepower" then
+		return className == "acf_gun" or className == "acf_rack"
+	end
+
+	return ACE_GetPtsType(className) == subsystem
+end
+
+-- Build a signature token for a subsystem-relevant entity.
+local function ACE_GetSubsystemToken(ent, subsystem)
+	if not ACE_IsEnt(ent) then return nil end
+
+	local className = ent:GetClass() or ""
+	if subsystem == "Ammo" and className == "acf_ammo" then
+		local bdata = ent.BulletData
+		if not bdata then return nil end
+
+		local ammoId = bdata.Id or ""
+		local ammoType = bdata.Type or ""
+		local calMm = ACE_GetAmmoCaliberMm(bdata)
+		local maxPen = ACE_GetAmmoMaxPen(bdata)
+		local blastMass = ACE_GetAmmoBlastMass(bdata)
+		local rounds = ent.Capacity or 0
+
+		return table.concat({
+			className,
+			tostring(ammoId),
+			tostring(ammoType),
+			string.format("%.1f", calMm),
+			string.format("%.2f", maxPen),
+			string.format("%.3f", blastMass),
+			tostring(rounds)
+		}, "|")
+	end
+
+	if (subsystem == "Ammo" or subsystem == "Firepower") and (className == "acf_gun" or className == "acf_rack") then
+		local model = ent:GetModel() or ""
+		local rps = ACE_GetEntRps(ent)
+		local id = ent.Id or ""
+
+		return table.concat({
+			className,
+			tostring(id),
+			string.format("%.4f", rps),
+			model
+		}, "|")
+	end
+
+	local model = ent:GetModel() or ""
+	local pts = ACE_GetEntPoints(ent)
+
+	return table.concat({
+		className,
+		model,
+		string.format("%.2f", pts)
+	}, "|")
+end
+
+-- Build a subsystem signature from a list of entities.
+function ACE_GetSubsystemSignatureFromEnts(subsystem, ents)
+	if not util or not util.SHA256 then return nil end
+	if not subsystem or not istable(ents) then return nil end
+
+	local parts = {}
+	for _, ent in pairs(ents) do
+		if ACE_IsEnt(ent) then
+			local className = ent:GetClass() or ""
+			if ACE_IsSubsystemClass(subsystem, className) then
+				local token = ACE_GetSubsystemToken(ent, subsystem)
+				if token then parts[#parts + 1] = token end
+			end
+		end
+	end
+
+	if #parts == 0 then return nil end
+	table.sort(parts)
+
+	return tostring(ACE.DupeSubsystemCacheVersion) .. ":" .. subsystem .. ":" .. util.SHA256(table.concat(parts, ";"))
+end
+
+-- Build subsystem signatures for a list of entities.
+function ACE_GetSubsystemSignaturesFromEnts(ents)
+	if not istable(ents) then return nil end
+
+	local subsystems = ACE.PointSubsystems or {
+		"Engines",
+		"Firepower",
+		"Ammo",
+		"Crew",
+		"Electronics"
+	}
+
+	local keys = {}
+	for _, subsystem in ipairs(subsystems) do
+		local key = ACE_GetSubsystemSignatureFromEnts(subsystem, ents)
+		if key then keys[subsystem] = key end
+	end
+
+	return next(keys) and keys or nil
+end
+
+-- Normalize AdvDupe2 hook arguments.
+function ACE_ParseAdvDupeArgs(...)
+	-- Supports both common patterns:
+	-- (ply, dupe, created) or (dupeInfoTable)
+	local a, b, c = ...
+
+	if istable(a) and (a.CreatedEntities or (a[1] and a[1].CreatedEntities)) then
+		local info = a
+		local dupe = info[1] or info.Dupe or info.dupe or info
+		local created = info.CreatedEntities or (dupe and dupe.CreatedEntities)
+		return dupe, created
+	end
+
+	if ACE_IsEnt(a) and a:IsPlayer() and istable(b) and istable(c) then
+		return b, c
+	end
+
+	if istable(a) and istable(b) then
+		return a, b
+	end
+
+	return nil, nil
+end
+
+-- Legacy manufacturing cost indicator (original mass/material system).
+function ACE_GetEntLegacyCost(ent, massOverride)
+	if not ACE_IsEnt(ent) then return 0 end
+
+	local points = ent.ACEPoints or 0
+	if points ~= 0 then return points end
+
+	local mass = massOverride
+	if mass == nil then
+		local phys = ent:GetPhysicsObject()
+		if IsValid(phys) then mass = phys:GetMass() end
+	end
+
+	mass = tonumber(mass) or 0
+	local pointsPerTon = ACF.PointsPerTon or 0
+	if mass > 0 and pointsPerTon > 0 then
+		local matTable = ACE.LegacyMatCostTables or ACE.MatCostTables or {}
+		local mat = (ent.ACF and ent.ACF.Material) or "RHA"
+
+		points = (mass / 1000) * pointsPerTon * (matTable[mat] or 1)
+	end
+
+	return points
+end
+
+-- Cached wrapper for per-crate ammo points.
+function ACE_GetAmmoCratePointsForContraption(crate, con, fallbackEnt)
+	if not ACE_IsEnt(crate) then return 0 end
+
+	local ammoDirty = con and con.ACESubsystemDirty and con.ACESubsystemDirty.Ammo
+	if con and con.ACEAmmoCache and not ammoDirty then
+		local cache = con.ACEAmmoCache
+		return ACE_CalcAmmoCratePoints(crate, cache.GunRpsById or {}, cache.Racks or {}, cache.ReadyAlloc)
+	end
+
+	local ents = ACE_GetContraptionEntities(con, fallbackEnt or crate)
+
+	local gunRpsById, racks = ACE_BuildGunRpsAndRacks(ents)
+
+	local readyAlloc = ACE_BuildAmmoReadyAlloc(ents)
+	local pts, detail = ACE_CalcAmmoCratePoints(crate, gunRpsById, racks, readyAlloc)
+
+	if con then
+		con.ACEAmmoCache = { GunRpsById = gunRpsById, Racks = racks, ReadyAlloc = readyAlloc }
+	end
+
+	return pts, detail
+end
+
+-- Get points for a single entity.
+function ACE_GetEntPoints(ent)
+	if not ACE_IsEnt(ent) then return 0 end
+
+	local class = ent:GetClass()
+	if (ACE.ArmorClasses and ACE.ArmorClasses[class])
+		or class == "acf_fueltank"
+		or class == "acf_ammo"
+		or class == "acf_gun"
+		or class == "acf_rack" then
+		return 0
+	end
+
+	return ent.ACEPoints or 0
+end
+
+-- Run the armor scan for a contraption.
+function ACE_GetArmorScan(ent)
+	if not ACE_CalcContraptionArmor then return 0, 0 end
+	return ACE_CalcContraptionArmor(ent)
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

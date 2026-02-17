@@ -24,7 +24,7 @@ ACF_DefineTrackRadar("Large-TRACK", {
 	offborefactor = 5,				--Inaccuracy modifier for targets at maximum offbore
 	burnthrough = 4,				--Burn through power at 1 degree seeker. x4 means burn through at 400m when fully in the center of a jam beam and set to 1 degree cone.
 	powerid		= 1,				--Power ranking of radar for RWR identification
-	acepoints = 1000
+	acepoints = 1200
 } )
 
 --Baseline radar. Solid track cone. Center beam burn through at 200m. Decent offbore accuracy.
@@ -39,7 +39,7 @@ ACF_DefineTrackRadar("Medium-TRACK", {
 	offborefactor = 10,				--Inaccuracy modifier for targets at maximum offbore
 	burnthrough = 2.5,				--Burn through power at 1 degree seeker. x2.5 means burn through at 250m when fully in the center of a jam beam and set to 1 degree cone.
 	powerid		= 2,				--Power ranking of radar for RWR identification
-	acepoints = 750
+	acepoints = 800
 } )
 
 --Only useful as a fire director
@@ -54,7 +54,7 @@ ACF_DefineTrackRadar("Small-TRACK", { --Does not burn through.
 	offborefactor = 20,				--Inaccuracy modifier for targets at maximum offbore
 	burnthrough = 0,				--Will not burn through.
 	powerid		= 3,				--Power ranking of radar for RWR identification
-	acepoints = 500
+	acepoints = 550
 } )
 
 --For every 400m, apply 1 unit of inaccuracy. Across map there are 4 units accuracy. diagonally 6 units of inaccuracy.

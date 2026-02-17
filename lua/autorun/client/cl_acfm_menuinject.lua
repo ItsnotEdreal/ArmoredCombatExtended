@@ -2,6 +2,14 @@
 
 include("acf/client/cl_acfmenu_missileui.lua")
 
+if not ACF then ACF = {} end
+if not ACF.ChatMessageReceiver then
+	ACF.ChatMessageReceiver = true
+	net.Receive("colorchatmessage", function()
+		chat.AddText(net.ReadColor(), net.ReadString())
+	end)
+end
+
 
 local ACFEnts = ACF.Weapons
 

@@ -1515,6 +1515,10 @@ function ACEExtrasGUICreate(Table)
 	acfmenupanel.CustomDisplay:PerformLayout()
 end
 
-net.Receive( "colorchatmessage", function( _, _ ) --Wooo colored chat
-	chat.AddText( net.ReadColor(), net.ReadString() )
-end )
+if not ACF then ACF = {} end
+if not ACF.ChatMessageReceiver then
+	ACF.ChatMessageReceiver = true
+	net.Receive( "colorchatmessage", function( _, _ ) --Wooo colored chat
+		chat.AddText( net.ReadColor(), net.ReadString() )
+	end )
+end
