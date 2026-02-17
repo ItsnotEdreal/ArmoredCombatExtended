@@ -84,6 +84,8 @@ function ENT:Initialize()
 
 	self.IgnitionDelay = 0
 
+	self.UnderwaterThrust = self.UnderwaterThrust or 1
+	self.BoostUnderwater = self.BoostUnderwater or 1
 	self.WaterZHeight = -1 --If set to >=0 it will indicate it's a torpedo.
 	self.UpdateFX = true
 
