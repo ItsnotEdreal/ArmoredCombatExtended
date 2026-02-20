@@ -178,10 +178,10 @@ ACE.LegacyMatCostTables = ACE.LegacyMatCostTables or {
     RHA = 1
 }
 ACE.AmmoCostConfig = {
-    BaseRoundPts = 120, -- Base points per round before scaling.
+    BaseRoundPts = 200, -- Base points per round before scaling.
     RefPen = 720, -- Reference penetration (mm) for pen scaling.
     RefCaliber = 100, -- Reference caliber (mm) for caliber scaling.
-    PenExp = 1.6, -- Penetration curve exponent.
+    PenExp = 1.4, -- Penetration curve exponent.
     RefBlastMass = 6, -- Reference HE filler mass (kg) for blast scaling.
     BlastExp = 1.1, -- Blast curve exponent.
     BlastWeight = 0.25, -- Blend weight for blast vs penetration threat.
@@ -627,6 +627,7 @@ AddCSLuaFile("autorun/acf_missile/folder.lua")
 include("autorun/acf_missile/folder.lua")
 
 print("[ACE | INFO]- Done!")
+
 
 
 
