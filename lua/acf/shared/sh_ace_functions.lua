@@ -806,6 +806,66 @@ function ACE_IsValidArmorResult(front, side)
 	return true
 end
 
+-- Convert front/side scan values to armor points.
+function ACE_CalcArmorPoints(front, side)
+	front = tonumber(front) or 0
+	side = tonumber(side) or 0
+	return (front + side * 2) * 4
+end
+
+-- Validate cached armor detail list structure.
+function ACE_IsValidArmorDetails(details)
+	if details == nil then return true end
+	if not istable(details) then return false end
+
+	for _, row in ipairs(details) do
+		if not istable(row) then return false end
+		if not isnumber(row.Points) then return false end
+	end
+
+	return true
+end
+
+-- Safe helpers for point/readout math.
+function ACE_SafeNonNegative(value)
+	value = tonumber(value) or 0
+	if value ~= value or value == math.huge or value == -math.huge then return 0 end
+	return math.max(value, 0)
+end
+
+function ACE_SafeRatio(numerator, denominator)
+	numerator = tonumber(numerator) or 0
+	denominator = tonumber(denominator) or 0
+	if denominator <= 0 then return 0 end
+	local value = numerator / denominator
+	if value ~= value or value == math.huge or value == -math.huge then return 0 end
+	return value
+end
+
+function ACE_SafeRound1(value)
+	return math.Round(ACE_SafeNonNegative(value), 1)
+end
+
+function ACE_FormatDetailLabel(ent)
+	if not ACE_IsEnt(ent) then return "Unknown" end
+
+	local name = ""
+	if ent.GetNWString then
+		name = ent:GetNWString("WireName", "")
+	end
+	if name == "" and ent.GetName then
+		name = ent:GetName() or ""
+	end
+	if name == "" and ent.PrintName and ent.PrintName ~= "" then
+		name = ent.PrintName
+	end
+	if name == "" then
+		name = ent:GetClass() or "unknown"
+	end
+
+	return string.format("%s [#%d]", name, ent:EntIndex())
+end
+
 -- Resolve the ammo type multiplier for cost/points.
 function ACE_GetAmmoTypeFactor(ammoType)
 	local factors = ACE.AmmoTypeFactors
@@ -877,6 +937,11 @@ function ACE_GetAmmoRoundPoints(bdata)
 	local threatFactor = penFactor + blastFactor * blastWeight + utilFactor
 	if threatFactor <= 0 then return 0 end
 
+	local threatExp = cfg.ThreatExp or 1
+	if threatExp > 0 and threatExp ~= 1 then
+		threatFactor = threatFactor ^ threatExp
+	end
+
 	local calFactor = calMm / refCal
 
 	return baseRound * threatFactor * calFactor * typeFactor
@@ -915,7 +980,13 @@ function ACE_GetAmmoThreatWeight(bdata)
 		end
 	end
 
-	return penFactor + blastFactor * blastWeight + utilFactor
+	local threatFactor = penFactor + blastFactor * blastWeight + utilFactor
+	local threatExp = cfg.ThreatExp or 1
+	if threatExp > 0 and threatExp ~= 1 then
+		threatFactor = threatFactor ^ threatExp
+	end
+
+	return threatFactor
 end
 
 -- Compute sustained rounds per second for a gun/rack.
@@ -1084,7 +1155,11 @@ function ACE_BuildAmmoReadyAlloc(ents)
 
 				table.sort(entries, function(a, b)
 					if a.frac == b.frac then
-						if a.rounds == b.rounds then return tostring(a.ent) < tostring(b.ent) end
+						if a.rounds == b.rounds then
+							local aIdx = IsValid(a.ent) and a.ent:EntIndex() or 0
+							local bIdx = IsValid(b.ent) and b.ent:EntIndex() or 0
+							return aIdx < bIdx
+						end
 						return a.rounds < b.rounds
 					end
 					return a.frac > b.frac
@@ -1535,6 +1610,42 @@ function ACE_GetEntLegacyCost(ent, massOverride)
 	local points = ent.ACEPoints or 0
 	if points ~= 0 then return points end
 
+	local class = ent:GetClass()
+	local acf = ent.ACF or {}
+
+	-- Armor props: derive manufacturing cost from raw thickness (mm), then apply ductility scalar.
+	if ACE.ArmorClasses and ACE.ArmorClasses[class] then
+		local mat = acf.Material or "RHA"
+		local matData = ACE_GetMaterialData and ACE_GetMaterialData(mat)
+		local armorData = ent.acfPropArmorData and ent:acfPropArmorData()
+		local armorMod = ACF.ArmorMod or 1
+		local armorMm = tonumber(acf.MaxArmour or acf.Armour) or 0
+		local curve = (armorData and armorData.Curve) or 1
+
+		-- Match point-scan weighting: KE 80% + CHEM 20% effectiveness.
+		local effKE = (armorData and armorData.Effectiveness) or (matData and matData.effectiveness) or 1
+		local effCHEM = (armorData and (armorData.HEATeffectiveness or armorData.HEATEffectiveness))
+			or (matData and (matData.HEATeffectiveness or matData.effectiveness))
+			or effKE
+		local weightedEff = effKE * 0.8 + effCHEM * 0.2
+
+		local effectiveMm = 0
+		if armorMm > 0 then
+			effectiveMm = (armorMm ^ curve) * weightedEff
+		end
+
+		local rawMm = 0
+		if effectiveMm > 0 and armorMod > 0 then
+			rawMm = effectiveMm / armorMod
+		end
+
+		local duct = math.Clamp(tonumber(acf.Ductility) or 0, -0.8, 0.8)
+		local ductilityCostMul = 1 + duct * 0.125 -- -80 => 0.9x, +80 => 1.1x
+		local perMm = ACE.LegacyRawMmCostPerProp or 1
+
+		return math.max(rawMm * perMm * ductilityCostMul, 0)
+	end
+
 	local mass = massOverride
 	if mass == nil then
 		local phys = ent:GetPhysicsObject()
@@ -1596,7 +1707,8 @@ end
 -- Run the armor scan for a contraption.
 function ACE_GetArmorScan(ent)
 	if not ACE_CalcContraptionArmor then return 0, 0 end
-	return ACE_CalcContraptionArmor(ent)
+	local front, side = ACE_CalcContraptionArmor(ent)
+	return front, side
 end
 
 

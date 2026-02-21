@@ -1293,32 +1293,53 @@ function ENT:ACF_OnDamage( Entity, Energy, FrArea, _, Inflictor, _, _ )	--This f
 end
 
 do
-	local MissileGuidanceFactors = {
-		Dumb				= 0.3,
-		Straight_Running	= 0.45,
-		GPS					= 0.6,
-		Antimissile			= 0.6,
-		AntiRadiation		= 0.7,
-		Beam_Riding			= 0.7,
+	local DefaultGuidanceFactors = {
+		Dumb = 0.3,
+		Straight_Running = 0.45,
+		GPS = 0.6,
+		Antimissile = 0.6,
+		AntiRadiation = 0.7,
+		Beam_Riding = 0.7,
 		GPS_TerrainAvoidant = 0.8,
-		SACLOS				= 0.75,
-		Semiactive			= 0.85,
-		Wire				= 1.0,
-		Acoustic_Straight 	= 1.0,
-		Acoustic_Helical	= 1.0,
-		Laser				= 1.2,
-		Infrared			= 1.2,
-		Top_Attack_IR		= 1.5,
-		Radar				= 1.5
+		SACLOS = 0.75,
+		Semiactive = 0.85,
+		Wire = 1.0,
+		Acoustic_Straight = 1.0,
+		Acoustic_Helical = 1.0,
+		Laser = 1.2,
+		Infrared = 1.2,
+		Top_Attack_IR = 1.5,
+		Radar = 1.5
 	}
 
-	function CalculateMissileCost(BulletData) --Used for both the missiles on the rack and the ammo entities
-		local Pts = ACF_GetRackValue(BulletData, "pointcost") or ACF_GetGunValue(BulletData.Id, "pointcost") or 0.9
-		local Guid = BulletData.Data7 or "Dumb"
-		local factor = MissileGuidanceFactors[Guid] or MissileGuidanceFactors.Dumb or 1
-		Pts = Pts * factor
-		return Pts
+	-- Calculates per-missile points for rack/ammo entities.
+	-- ATGMs use the same performance model as gun ammo, blended with legacy pointcost for continuity.
+	function CalculateMissileCost(BulletData)
+		local legacyPts = ACF_GetRackValue(BulletData, "pointcost") or ACF_GetGunValue(BulletData.Id, "pointcost") or 0
+		local guid = BulletData.Data7 or "Dumb"
+		local guidanceFactors = ACE.MissileGuidanceFactors or DefaultGuidanceFactors
+		local factor = guidanceFactors[guid] or guidanceFactors.Dumb or 1
+
+		local gunClass = ACF_GetGunValue(BulletData.Id, "gunclass")
+		local basePts = legacyPts
+
+		if gunClass == "ATGM" then
+			local cfg = ACE.ATGMCostConfig or {}
+			local perfPts = ACE_GetAmmoRoundPoints(BulletData)
+			local perfMul = cfg.PerformanceMul or 1
+			local legacyWeight = math.Clamp(cfg.LegacyWeight or 0, 0, 1)
+			local minBase = cfg.MinBase or 25
+
+			if perfPts > 0 then
+				basePts = perfPts * perfMul
+				if legacyPts > 0 and legacyWeight > 0 then
+					basePts = basePts * (1 - legacyWeight) + legacyPts * legacyWeight
+				end
+			end
+
+			basePts = math.max(basePts, minBase)
+		end
+
+		return basePts * factor
 	end
-
-
 end

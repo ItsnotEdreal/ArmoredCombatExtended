@@ -564,11 +564,24 @@ end
 -- Armor dirty wrapper
 -- ------------------------------------------------------------
 
+local ArmorDirtyReasonPolicy = {
+	rempts = false,
+	setmass = true,
+	["addpts-existing"] = true,
+	["addpts-new"] = true
+}
+
 -- Mark armor as dirty and capture context.
 function ACE_MarkArmorDirty(con, ent, reason)
 	if not con then return end
 	if ACE_ShouldIgnoreDirty(con) then return end
 	if ACE_ShouldIgnoreDirtyEnt(ent) then return end
+
+	local policy = ArmorDirtyReasonPolicy[reason]
+	if policy == false then
+		ACE_DebugDirty(con, "skip-reason:" .. tostring(reason), ent, nil, "MarkDirty")
+		return
+	end
 
 	local cls = IsEnt(ent) and ent:GetClass() or ""
 	if cls == "primitive_shape" and not ent.ACEArmorDirtySeen then
