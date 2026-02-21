@@ -1,12 +1,9 @@
-name: Deploy to Workshop
+name: Canary deployment to Workshop
 
 on:
   push:
     branches: [ dev ]
-  workflow_dispatch:    # Manual trigger (button in GitHub Actions tab)
-  # Optional: auto-deploy on push to main branch
-  # push:
-  #   branches: [main]
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -14,10 +11,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@master
-      - uses: vurv78/gmod-upload@master
+      - uses: ACE-Project-Team/gmod-upload@master
         with:
-          id: 3670751046          # Replace with YOUR workshop addon ID
-          changelog: "Deployment via Github to latest changes"
+          id: 3670751046
+          changelog: ${{ github.event.head_commit.message }}
         env:
           STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
           STEAM_PASSWORD: ${{ secrets.STEAM_PASSWORD }}
