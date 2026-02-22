@@ -1,4 +1,4 @@
-name: Deploy Canary to Workshop
+name: Canary deployment to Workshop
 
 on:
   workflow_dispatch:        # Manual button
