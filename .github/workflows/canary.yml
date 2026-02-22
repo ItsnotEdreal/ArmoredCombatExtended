@@ -1,30 +1,21 @@
 name: Canary deployment to Workshop
 
 on:
-  workflow_dispatch:        # Manual button
-  schedule:
-    - cron: '0 */8 * * *'  # Every 8 hours (as KemGus suggested)
+  workflow_dispatch:
+  push:
+    branches: [dev]
+
+concurrency:
+  group: workshop-upload
+  cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
-      # Skip if no new commits (for scheduled runs)
-      - name: Check for changes
-        id: changes
-        run: |
-          if git log --since="8 hours ago" --oneline | grep -q .; then
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-          else
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-          fi
 
       - name: Upload to Workshop
-        if: steps.changes.outputs.has_changes == 'true' || github.event_name == 'workflow_dispatch'
         uses: ACE-Project-Team/gmod-upload@master
         with:
           id: 3670751046
