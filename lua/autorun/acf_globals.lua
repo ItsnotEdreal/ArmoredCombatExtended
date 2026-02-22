@@ -143,7 +143,7 @@ ACE.AmmoPerTon     = 100 --Point cost per ton of ammo
 ACE.AmmoTypeFactors = {
     AP = 0.5,
     APHE = 0.6,
-    APDS = 0.9,
+    APDS = 1.0,
     APFSDS = 1.2,
     HVAP = 0.7,
     HEAT = 0.75,
@@ -151,8 +151,8 @@ ACE.AmmoTypeFactors = {
     THEAT = 0.95,
     THEATFS = 1.0,
     HESH = 0.4,
-    HE = 1.2,
-    HEFS = 1.3,
+    HE = 0.66,
+    HEFS = 0.715,
     HP = 0.1,
     CAP = 0.6,
     CHEAT = 0.8,
@@ -181,14 +181,14 @@ ACE.AmmoCostConfig = {
     BaseRoundPts = 120, -- Base points per round before scaling.
     RefPen = 720, -- Reference penetration (mm) for pen scaling.
     RefCaliber = 100, -- Reference caliber (mm) for caliber scaling.
-    PenExp = 1.6, -- Penetration curve exponent.
+    PenExp = 1.4, -- Penetration curve exponent.
     RefBlastMass = 6, -- Reference HE filler mass (kg) for blast scaling.
     BlastExp = 1.1, -- Blast curve exponent.
     BlastWeight = 0.25, -- Blend weight for blast vs penetration threat.
-    HeUtilWeight = 1.5, -- HE utility weight from filler mass per caliber.
+    HeUtilWeight = 1.3, -- HE utility weight from filler mass per caliber.
     HeUtilExp = 0.5, -- HE utility exponent for filler per caliber.
     RpsRef = 1 / 7, -- Reference rounds per second for ROF scaling.
-    RpsExp = 0.5, -- ROF curve exponent.
+    RpsExp = 0.825, -- ROF curve exponent (+10%).
     ReadyRackBase = 3000, -- Ready rack baseline: base / caliber(mm).
     ReadyRackPivot = 60, -- Caliber (mm) where low-caliber boost stops.
     ReadyRackLowBoost = 1.5, -- Low-caliber boost (20mm hits 300 at base 3000).
@@ -197,9 +197,45 @@ ACE.AmmoCostConfig = {
     TailStartMultiplier = 2 -- Tail start = readyCap * multiplier.
 }
 
+-- ATGM rack/ammo pricing blend.
+-- Performance uses the same ammo threat model as guns; legacy keeps continuity with existing per-missile pointcost.
+ACE.ATGMCostConfig = {
+    PerformanceMul = 1.0, -- Multiplier for performance-derived base points.
+    LegacyWeight = 0.2, -- 0 = pure performance, 1 = pure legacy pointcost.
+    MinBase = 1 -- Safety floor before guidance multiplier.
+}
+
+-- Guidance multipliers applied on top of missile base cost.
+ACE.MissileGuidanceFactors = {
+    Dumb = 0.3,
+    Straight_Running = 0.45,
+    GPS = 0.6,
+    Antimissile = 0.6,
+    AntiRadiation = 0.7,
+    Beam_Riding = 0.7,
+    GPS_TerrainAvoidant = 0.8,
+    SACLOS = 0.75,
+    Semiactive = 0.85,
+    Wire = 1.0,
+    Acoustic_Straight = 1.0,
+    Acoustic_Helical = 1.0,
+    Laser = 1.2,
+    Infrared = 1.2,
+    Top_Attack_IR = 1.5,
+    Radar = 1.5
+}
+
 -- Armor tool UX timing.
 ACE.ArmorPreviewTapWindow = ACE.ArmorPreviewTapWindow or 0.35 -- Seconds between reload taps to trigger preview.
 ACE.ArmorPreviewCooldown = ACE.ArmorPreviewCooldown or 5 -- Seconds between preview requests per player.
+
+-- Armor scan tuning values for LOS trace consistency.
+ACE.ArmorScanConfig = ACE.ArmorScanConfig or {
+    RegionSnap = 2,
+    TraceHullSize = 3,
+    TraceMaxSteps = 128,
+    ResultQuantizeMm = 1.0 -- Quantize scan outputs to reduce tiny trace jitter.
+}
 
 ---------------------------------- Misc & other ----------------------------------
 
@@ -402,7 +438,7 @@ elseif CLIENT then
     CreateClientConVar( "acf_sens_scopes", 0.2, true, false, "Reduce mouse sensitivity by this amount when zoomed in with scopes on ACE SWEPs.", 0.01, 1)
     CreateClientConVar( "acf_tinnitus", 1, true, false, "Allows the ear tinnitus effect to be applied when an explosive was detonated too close to your position, improving the inmersion during combat.", 0, 1 )
     CreateClientConVar( "acf_sound_volume", 100, true, false, "Adjusts the volume of explosions and gunshots.", 0, 100 )
-    CreateClientConVar( "acf_armor_readout_full", 1, true, false, "Show full armor readout in the ACF armor tool.", 0, 1 )
+    CreateClientConVar( "acf_armor_readout_full", 0, true, false, "Show full armor readout in the ACF armor tool.", 0, 1 )
 
 end
 
@@ -627,6 +663,7 @@ AddCSLuaFile("autorun/acf_missile/folder.lua")
 include("autorun/acf_missile/folder.lua")
 
 print("[ACE | INFO]- Done!")
+
 
 
 

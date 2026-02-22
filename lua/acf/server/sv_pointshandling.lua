@@ -183,7 +183,12 @@ local function ACE_CalcNonAmmoSubsystem(ents, subsystem, minDetailPts)
 			local cls = ent:GetClass()
 			local eclass = ACE_GetPtsType(cls)
 			if eclass == subsystem then
-				local pts = ACE_GetEntPoints(ent)
+				local pts
+				if subsystem == "Crew" then
+					pts = tonumber(ACE.CrewSeatCostFlat) or 250
+				else
+					pts = ACE_GetEntPoints(ent)
+				end
 				if pts ~= 0 then
 					total = total + pts
 					ACE_AddDetailItem(
@@ -222,9 +227,6 @@ function ACE_CalcAmmoCratePoints(crate, gunRpsById, racks, readyAlloc)
 	local calMm = ACE_GetAmmoCaliberMm(bdata)
 	if calMm <= 0 then return 0 end
 
-	local typeFactor = ACE_GetAmmoTypeFactor(bdata.Type)
-	if typeFactor <= 0 then return 0 end
-
 	local ammoId = bdata.Id
 	if not ammoId then return 0 end
 
@@ -239,30 +241,13 @@ function ACE_CalcAmmoCratePoints(crate, gunRpsById, racks, readyAlloc)
 	if rpsTotal <= 0 then return 0 end
 
 	local cfg = ACE.AmmoCostConfig or {}
-	local refPen = cfg.RefPen or 0
-	local refCal = cfg.RefCaliber or 0
 	local refRps = cfg.RpsRef or 0
-	local baseRound = cfg.BaseRoundPts or 0
-	if refPen <= 0 or refCal <= 0 or refRps <= 0 or baseRound <= 0 then return 0 end
+	if refRps <= 0 then return 0 end
 
-	local penExp = cfg.PenExp or 1
-	local blastExp = cfg.BlastExp or 1
-	local blastWeight = cfg.BlastWeight or 0
 	local rpsExp = cfg.RpsExp or 1
-	local refBlast = cfg.RefBlastMass or 0
-
-	local penFactor = (maxPen / refPen) ^ penExp
-	local blastFactor = 0
-	if blastMass > 0 and refBlast > 0 then
-		blastFactor = (blastMass / refBlast) ^ blastExp
-	end
-
-	local threatFactor = penFactor + blastFactor * blastWeight
-	if threatFactor <= 0 then return 0 end
-
-	local calFactor = calMm / refCal
 	local rpsFactor = (rpsTotal / refRps) ^ rpsExp
-	local roundPts = baseRound * threatFactor * calFactor * typeFactor
+	local roundPts = ACE_GetAmmoRoundPoints(bdata)
+	if roundPts <= 0 then return 0 end
 
 	local stowFactor = cfg.StowFactor or 1
 	local tailFactor = cfg.TailFactor or 0
@@ -757,7 +742,8 @@ ACE_CalcContraptionArmor = function(ent)
 	local frontU, frontV = basisFromDir(frontDir)
 	local sideU, sideV = basisFromDir(sideDir)
 
-	local regionSnap = 2
+	local scanCfg = ACE.ArmorScanConfig or {}
+	local regionSnap = scanCfg.RegionSnap or 2
 	local origin = ent:WorldSpaceCenter()
 
 	-- Build a region bucket key.
@@ -778,6 +764,40 @@ ACE_CalcContraptionArmor = function(ent)
 		end
 	end
 
+	local hullSize = scanCfg.TraceHullSize or 3
+	local TRACE_HULL_MINS = Vector(-hullSize, -hullSize, -hullSize)
+	local TRACE_HULL_MAXS = Vector(hullSize, hullSize, hullSize)
+	local TRACE_MAX_STEPS = scanCfg.TraceMaxSteps or 128
+
+	-- Calculate effective LOS armor at a trace impact point.
+	local function calcLosArmor(hitEnt, hitNormal, shotDir)
+		local acf = hitEnt.ACF
+		if not istable(acf) then return 0 end
+
+		local mat = acf.Material or "RHA"
+		local matData = ACE_GetMaterialData(mat)
+		local armor = acf.Armour or 0
+		if armor <= 0 then return 0 end
+
+		local armorData = hitEnt.acfPropArmorData and hitEnt:acfPropArmorData()
+		local effKE = (armorData and armorData.Effectiveness) or (matData and matData.effectiveness) or 1
+		local effCHEM = (armorData and (armorData.HEATeffectiveness or armorData.HEATEffectiveness))
+			or (matData and (matData.HEATeffectiveness or matData.effectiveness))
+			or effKE
+
+		local eff = effKE * 0.8 + effCHEM * 0.2
+		local curve = (armorData and armorData.Curve) or 1
+		local ang = ACF_GetHitAngle(hitNormal, shotDir)
+
+		if ang >= 89 then
+			return (armor ^ curve) * eff
+		end
+
+		local cosAng = math.max(math.cos(math.rad(ang)), 0.01)
+		local los = (armor / (cosAng ^ ACF.SlopeEffectFactor)) ^ curve
+		return los * eff
+	end
+
 	-- Line-of-sight test with filter rules.
 	local function losFiltered(startPos, endPos, targetComp)
 		local filter = {}
@@ -785,16 +805,13 @@ ACE_CalcContraptionArmor = function(ent)
 		local dir = (endPos - startPos):GetNormalized()
 		local hitTarget = false
 
-		local hullMins = Vector(-3, -3, -3)
-		local hullMaxs = Vector(3, 3, 3)
-
-		for _ = 1, 128 do
+		for _ = 1, TRACE_MAX_STEPS do
 			-- Small hull keeps thin props from slipping through the trace.
 			local tr = util.TraceHull({
 				start = startPos,
 				endpos = endPos,
-				mins = hullMins,
-				maxs = hullMaxs,
+				mins = TRACE_HULL_MINS,
+				maxs = TRACE_HULL_MAXS,
 				filter = filter,
 				mask = MASK_SOLID
 			})
@@ -832,41 +849,9 @@ ACE_CalcContraptionArmor = function(ent)
 					filter[#filter + 1] = hitEnt
 					startPos = tr.HitPos + dir * 0.1
 				else
-					-- Defensive ACF lookup for non-ACF props and holograms.
-					local acf = hitEnt.ACF
-					if not istable(acf) then
-						filter[#filter + 1] = hitEnt
-						startPos = tr.HitPos + dir * 0.1
-					else
-						local Mat = acf.Material or "RHA"
-						local MatData = ACE_GetMaterialData(Mat)
-
-						local armor = acf.Armour or 0
-						local armorData = hitEnt.acfPropArmorData and hitEnt:acfPropArmorData()
-
-						local effKE = (armorData and armorData.Effectiveness) or (MatData and MatData.effectiveness) or 1
-						local effCHEM = (armorData and (armorData.HEATeffectiveness or armorData.HEATEffectiveness))
-							or (MatData and (MatData.HEATeffectiveness or MatData.effectiveness))
-							or effKE
-
-						local eff = effKE * 0.8 + effCHEM * 0.2
-						local curve = (armorData and armorData.Curve) or 1
-
-						local ang = ACF_GetHitAngle(tr.HitNormal, dir)
-						local los
-						if ang >= 89 then
-							los = (armor ^ curve) * eff
-						else
-							local cosAng = math.max(math.cos(math.rad(ang)), 0.01)
-							los = (armor / (cosAng ^ ACF.SlopeEffectFactor)) ^ curve
-							los = los * eff
-						end
-
-						total = total + los
-
-						filter[#filter + 1] = hitEnt
-						startPos = tr.HitPos + dir * 0.1
-					end
+					total = total + calcLosArmor(hitEnt, tr.HitNormal, dir)
+					filter[#filter + 1] = hitEnt
+					startPos = tr.HitPos + dir * 0.1
 				end
 			end
 		end
@@ -900,6 +885,7 @@ ACE_CalcContraptionArmor = function(ent)
 	local debugMaxLOS = 0
 
 	local frontRegions, sideRegions = {}, {}
+	local compContrib = {}
 
 	for _, comp in ipairs(criticals) do
 		local center = comp:WorldSpaceCenter()
@@ -930,6 +916,8 @@ ACE_CalcContraptionArmor = function(ent)
 		local sampleCount = #samples
 		local weightF = (sampleCount > 0) and (frontArea / sampleCount) or 0
 		local weightS = (sampleCount > 0) and (sideArea / sampleCount) or 0
+		local compFrontWeight = 0
+		local compSideWeight = 0
 
 		for _, pt in ipairs(samples) do
 			local frontVal = losFiltered(pt - frontDir * frontDist, pt, comp)
@@ -955,10 +943,20 @@ ACE_CalcContraptionArmor = function(ent)
 
 			if frontVal > 0 then
 				updateRegion(frontRegions, regionKey(pt, frontU, frontV), frontVal, weightF)
+				compFrontWeight = compFrontWeight + frontVal * weightF
 			end
 			if sideVal > 0 then
 				updateRegion(sideRegions, regionKey(pt, sideU, sideV), sideVal, weightS)
+				compSideWeight = compSideWeight + sideVal * weightS
 			end
+		end
+
+		local compWeight = compFrontWeight + compSideWeight * 2
+		if compWeight > 0 then
+			compContrib[#compContrib + 1] = {
+				Ent = comp,
+				Weight = compWeight
+			}
 		end
 	end
 
@@ -988,8 +986,93 @@ ACE_CalcContraptionArmor = function(ent)
 		countSide = countSide + e.weight
 	end
 
-	return (countFront > 0 and (accumFront / countFront) or 0),
-		   (countSide  > 0 and (accumSide  / countSide)  or 0)
+	local frontAvg = countFront > 0 and (accumFront / countFront) or 0
+	local sideAvg = countSide > 0 and (accumSide / countSide) or 0
+
+	local quantStep = scanCfg.ResultQuantizeMm or 0
+	if quantStep > 0 then
+		frontAvg = math.Round(frontAvg / quantStep) * quantStep
+		sideAvg = math.Round(sideAvg / quantStep) * quantStep
+	end
+
+	local totalArmorPts = ACE_CalcArmorPoints(frontAvg, sideAvg)
+
+	-- Build per-entity armor detail weights.
+	-- Prefer trace-derived armor entities if available; otherwise fallback to armor prop projected area weighting.
+	local detailWeights = {}
+	local detailWeightTotal = 0
+	for _, row in ipairs(compContrib) do
+		local comp = row.Ent
+		if IsEnt(comp) then
+			local cls = comp:GetClass()
+			if ACE.ArmorClasses and ACE.ArmorClasses[cls] then
+				local w = tonumber(row.Weight) or 0
+				if w > 0 then
+					detailWeights[#detailWeights + 1] = { Ent = comp, Weight = w }
+					detailWeightTotal = detailWeightTotal + w
+				end
+			end
+		end
+	end
+
+	if detailWeightTotal <= 0 then
+		for _, ent in ipairs(contraptionEnts) do
+			if IsEnt(ent) then
+				local cls = ent:GetClass()
+				if ACE.ArmorClasses and ACE.ArmorClasses[cls] then
+					local w = projectedData(ent, frontDir) + projectedData(ent, sideDir) * 2
+					if w > 0 then
+						detailWeights[#detailWeights + 1] = { Ent = ent, Weight = w }
+						detailWeightTotal = detailWeightTotal + w
+					end
+				end
+			end
+		end
+	end
+
+	local armorDetails = {}
+	if totalArmorPts > 0 and detailWeightTotal > 0 then
+		for _, row in ipairs(detailWeights) do
+			local comp = row.Ent
+			if IsEnt(comp) then
+				local pts = totalArmorPts * (row.Weight / detailWeightTotal)
+				local label = ACE_FormatDetailLabel(comp)
+				armorDetails[#armorDetails + 1] = {
+					Label = label,
+					RawPoints = pts,
+					Points = ACE_SafeRound1(pts),
+					EntIndex = comp:EntIndex()
+				}
+			end
+		end
+	end
+
+	table.sort(armorDetails, function(a, b)
+		if a.Points == b.Points then
+			if a.EntIndex == b.EntIndex then return tostring(a.Label) < tostring(b.Label) end
+			return a.EntIndex < b.EntIndex
+		end
+		return a.Points > b.Points
+	end)
+
+	-- Keep detail sum aligned with displayed armor total after rounding.
+	if #armorDetails > 0 then
+		local detailTotal = 0
+		for _, entry in ipairs(armorDetails) do
+			detailTotal = detailTotal + (entry.Points or 0)
+		end
+
+		local correction = ACE_SafeRound1(totalArmorPts - detailTotal)
+		if correction ~= 0 then
+			armorDetails[1].Points = ACE_SafeNonNegative((armorDetails[1].Points or 0) + correction)
+		end
+
+		for _, entry in ipairs(armorDetails) do
+			entry.RawPoints = nil
+		end
+	end
+
+	return frontAvg, sideAvg, armorDetails
 end
 
 
@@ -998,28 +1081,33 @@ function ACE_EnsureArmor(con, baseEnt, force)
 	if not con then return end
 
 	local cacheStale = ACE_EnsureCacheVersion and ACE_EnsureCacheVersion(con) or false
-	if not force and not con.ACEArmorDirty and not cacheStale then return end
+	local needsInit = not con.ACEArmorCalculated or (con.ACEArmorLastCalc or 0) <= 0
+	if not force and not needsInit and not con.ACEArmorDirty and not cacheStale then return end
 
 	local base = baseEnt
 	if (not IsEnt(base)) and con.GetACEBaseplate then base = con:GetACEBaseplate() end
 
 	local front, side = 0, 0
+	local armorDetails = con.ACEArmorDetails or {}
 	local usedCache = false
 
 	local cacheKey = con.ACEArmorCacheKey
+	local cached = con.ACEArmorCachedData
 	if ACE_DebugCache then
 		local info = string.format("key=%s cached=%s", tostring(cacheKey or "nil"), tostring(cached ~= nil))
 		ACE_DebugCache(con, "ensure-cache", base, info, "EnsureArmor")
 	end
-
-	local cached = con.ACEArmorCachedData
 	if cached then
 		front = cached.Front or cached.front or 0
 		side = cached.Side or cached.side or 0
+		local cachedDetails = cached.Details or cached.details
+		local cacheVersion = cached.Version or cached.version or 1
+		local expectedVersion = ACE.ArmorCacheVersion or 1
 
-		if ACE_IsValidArmorResult(front, side) then
+		if cacheVersion == expectedVersion and ACE_IsValidArmorResult(front, side) and ACE_IsValidArmorDetails(cachedDetails) then
 			con.ACEArmorFront = front
 			con.ACEArmorSide = side
+			armorDetails = cachedDetails or armorDetails
 			usedCache = true
 		else
 			front, side = 0, 0
@@ -1028,7 +1116,7 @@ function ACE_EnsureArmor(con, baseEnt, force)
 	end
 
 	if not usedCache and IsEnt(base) then
-		front, side = ACE_CalcContraptionArmor(base)
+		front, side, armorDetails = ACE_CalcContraptionArmor(base)
 		con.ACEArmorFront = front
 		con.ACEArmorSide = side
 	end
@@ -1037,12 +1125,13 @@ function ACE_EnsureArmor(con, baseEnt, force)
 		ACE_RebuildNonArmorPoints(con, base)
 	end
 
-	local newArmorPts = (front + side * 2) * 4
+	local newArmorPts = ACE_CalcArmorPoints(front, side)
 
 	con.ACEPointsPerType = con.ACEPointsPerType or {}
 	con.ACEPointsPerType.Armor = newArmorPts
 
 	con.ACEArmorPoints = newArmorPts
+	con.ACEArmorDetails = armorDetails or {}
 	con.ACEArmorDirty = false
 	con.ACEArmorCalculated = true
 	con.ACEArmorLastCalc = CurTime()
@@ -1056,7 +1145,12 @@ function ACE_EnsureArmor(con, baseEnt, force)
 	local cacheKey = con.ACEArmorCacheKey
 	if cacheKey and not usedCache and ACE_IsValidArmorResult(front, side) then
 		ACE.DupeArmorCache = ACE.DupeArmorCache or {}
-		ACE.DupeArmorCache[cacheKey] = { Front = front, Side = side }
+		ACE.DupeArmorCache[cacheKey] = {
+			Version = ACE.ArmorCacheVersion or 1,
+			Front = front,
+			Side = side,
+			Details = armorDetails
+		}
 		if ACE_DebugCache then
 			local info = string.format("write key=%s", tostring(cacheKey))
 			ACE_DebugCache(con, "cache-write", base, info, "EnsureArmor")
