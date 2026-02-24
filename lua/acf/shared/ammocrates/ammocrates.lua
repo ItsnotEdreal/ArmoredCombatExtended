@@ -9,7 +9,7 @@ ACE_DefineAmmoCrate( "Shell75mm", {
 	desc = "A single 75mm Shell. As an alternative to the bulky ammocrates.\n",
 	model = "models/munitions/round_75mm.mdl",
 	weight = 5,
-	Lenght = 3,
+	Length = 3,
 	Width = 3,
 	Height = 31,
 
