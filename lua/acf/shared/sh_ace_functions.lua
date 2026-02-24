@@ -197,6 +197,24 @@ function ACF_Kinetic( Speed , Mass, LimitVel )
 	return Energy
 end
 
+-- Convert kinetic penetration energy and projectile area to RHA penetration in mm.
+function ACE_CalcPenetration(Energy, PenArea, PenMul)
+	local EnergyPen = istable(Energy) and tonumber(Energy.Penetration) or tonumber(Energy)
+	local Area = tonumber(PenArea)
+
+	if not EnergyPen or not Area or Area <= 0 then return 0 end
+
+	local Pen = (EnergyPen / Area) * (ACF.KEtoRHA or 0)
+
+	if PenMul then
+		Pen = Pen * PenMul
+	end
+
+	if Pen ~= Pen or Pen == math.huge or Pen == -math.huge then return 0 end
+
+	return math.max(Pen, 0)
+end
+
 do
 
 	--Convert old numeric IDs to the new string IDs
@@ -806,15 +824,370 @@ function ACE_IsValidArmorResult(front, side)
 	return true
 end
 
+-- Convert front/side scan values to armor points.
+function ACE_CalcArmorPoints(front, side)
+	front = tonumber(front) or 0
+	side = tonumber(side) or 0
+
+	local cfg = ACE.PointCostConfig or {}
+	local frontWeight = tonumber(cfg.ArmorFrontWeight) or 1
+	local sideWeight = tonumber(cfg.ArmorSideWeight) or 2.5
+	local armorScale = tonumber(cfg.ArmorScale) or 4
+
+	return (front * frontWeight + side * sideWeight) * armorScale
+end
+
+-- Validate cached armor detail list structure.
+function ACE_IsValidArmorDetails(details)
+	if details == nil then return true end
+	if not istable(details) then return false end
+
+	for _, row in ipairs(details) do
+		if not istable(row) then return false end
+		if not isnumber(row.Points) then return false end
+	end
+
+	return true
+end
+
+-- Safe helpers for point/readout math.
+function ACE_SafeNonNegative(value)
+	value = tonumber(value) or 0
+	if value ~= value or value == math.huge or value == -math.huge then return 0 end
+	return math.max(value, 0)
+end
+
+function ACE_SafeRatio(numerator, denominator)
+	numerator = tonumber(numerator) or 0
+	denominator = tonumber(denominator) or 0
+	if denominator <= 0 then return 0 end
+	local value = numerator / denominator
+	if value ~= value or value == math.huge or value == -math.huge then return 0 end
+	return value
+end
+
+function ACE_SafeRound1(value)
+	return math.Round(ACE_SafeNonNegative(value), 1)
+end
+
+do
+	-- Ensure all ACE/ACF traces respect ACF.TraceFilter, even when a local filter
+	-- is missing or incomplete in a specific trace call site.
+	if util and not ACE._TraceFilterWrapped then
+		local RawTraceLine = util.TraceLine
+		local RawTraceHull = util.TraceHull
+		local RawQuickTrace = util.QuickTrace
+		local RawLegacyTraceLine = util.LegacyTraceLine
+
+		local function shouldIgnoreByClass(ent)
+			if not IsValid(ent) then return false end
+
+			local class = ent:GetClass()
+			if not class or class == "" then return false end
+
+			local ignored = ACF and ACF.TraceFilter
+			return ignored and ignored[class] or false
+		end
+
+		local function normalizeFilter(filter)
+			if isfunction(filter) then
+				return function(ent)
+					if shouldIgnoreByClass(ent) then return true end
+					return filter(ent)
+				end
+			end
+
+			if IsValid(filter) then
+				return function(ent)
+					if shouldIgnoreByClass(ent) then return true end
+					return ent == filter
+				end
+			end
+
+			if istable(filter) then
+				local lookup = {}
+				for _, item in pairs(filter) do
+					if IsValid(item) then
+						lookup[item] = true
+					end
+				end
+
+				return function(ent)
+					if shouldIgnoreByClass(ent) then return true end
+					return lookup[ent] or false
+				end
+			end
+
+			return function(ent)
+				return shouldIgnoreByClass(ent)
+			end
+		end
+
+		if isfunction(RawTraceLine) then
+			util.TraceLine = function(traceData)
+				if not istable(traceData) then
+					return RawTraceLine(traceData)
+				end
+
+				traceData.filter = normalizeFilter(traceData.filter)
+				return RawTraceLine(traceData)
+			end
+		end
+
+		if isfunction(RawTraceHull) then
+			util.TraceHull = function(traceData)
+				if not istable(traceData) then
+					return RawTraceHull(traceData)
+				end
+
+				traceData.filter = normalizeFilter(traceData.filter)
+				return RawTraceHull(traceData)
+			end
+		end
+
+		if isfunction(RawQuickTrace) then
+			util.QuickTrace = function(startPos, delta, filter)
+				return RawQuickTrace(startPos, delta, normalizeFilter(filter))
+			end
+		end
+
+		if isfunction(RawLegacyTraceLine) then
+			util.LegacyTraceLine = function(traceData)
+				if not istable(traceData) then
+					return RawLegacyTraceLine(traceData)
+				end
+
+				traceData.filter = normalizeFilter(traceData.filter)
+				return RawLegacyTraceLine(traceData)
+			end
+		end
+
+		ACE._TraceFilterWrapped = true
+	end
+end
+
+function ACE_FormatDetailLabel(ent)
+	if not ACE_IsEnt(ent) then return "Unknown" end
+
+	local name = ""
+	if ent.GetNWString then
+		name = ent:GetNWString("WireName", "")
+	end
+	if name == "" and ent.GetName then
+		name = ent:GetName() or ""
+	end
+	if name == "" and ent.PrintName and ent.PrintName ~= "" then
+		name = ent.PrintName
+	end
+	if name == "" then
+		name = ent:GetClass() or "unknown"
+	end
+
+	return string.format("%s [#%d]", name, ent:EntIndex())
+end
+
 -- Resolve the ammo type multiplier for cost/points.
 function ACE_GetAmmoTypeFactor(ammoType)
 	local factors = ACE.AmmoTypeFactors
 	return factors and factors[ammoType] or 1
 end
 
+-- Extract configurable class name from "Name:arg=val" serialized strings.
+function ACE_GetConfigurableName(value, fallback)
+	if type(value) ~= "string" or value == "" then return fallback end
+
+	local name = string.match(value, "^[^:]+")
+	if not name or name == "" then return fallback end
+
+	return name
+end
+
+-- Resolve missile guidance multiplier from guidance configuration.
+function ACE_GetMissileGuidanceFactor(guidanceValue)
+	local factors = ACE.MissileGuidanceFactors or {}
+	local fallback = tonumber(factors.Dumb) or 1
+	local name = ACE_GetConfigurableName(guidanceValue, "Dumb")
+	local factor = tonumber(factors[name]) or fallback
+
+	return math.max(factor, 0)
+end
+
+-- Resolve the gun class string for ammo bullet data.
+function ACE_GetAmmoGunClass(bdata)
+	if not bdata then return nil end
+
+	local gunClass = bdata.GunClass
+	if gunClass and gunClass ~= "" then return gunClass end
+
+	local gunData = (bdata.Id and ACF and ACF.Weapons and ACF.Weapons.Guns and ACF.Weapons.Guns[bdata.Id]) or nil
+	return gunData and gunData.gunclass or nil
+end
+
+-- Determine whether an ammo type is a GLATGM family type.
+function ACE_IsGLATGMAmmoType(ammoType)
+	return ammoType == "GLATGM" or ammoType == "GLATGM-HE"
+end
+
+-- Resolve the most authoritative ammo type for an entity/bullet pair.
+function ACE_ResolveAmmoType(ent, bdata)
+	if ACE_IsEnt(ent) then
+		local entType = ent.RoundType
+		if isstring(entType) and entType ~= "" then return entType end
+
+		if ent.GetNWString then
+			local nwType = ent:GetNWString("AmmoType", "")
+			if nwType ~= "" then return nwType end
+		end
+	end
+
+	if bdata then
+		local btype = bdata.Type or bdata.RoundType
+		if isstring(btype) and btype ~= "" then return btype end
+	end
+
+	return ""
+end
+
+-- Resolve missile warhead behavior from ammo type.
+function ACE_GetMissileWarheadType(ammoType)
+	if ammoType == "GLATGM" then return "HEAT" end
+	if ammoType == "GLATGM-HE" then return "HE" end
+	return ammoType
+end
+
+-- Resolve explosion class used by ammo cookoff logic.
+function ACE_GetAmmoCookoffClass(_, isMissile)
+	if isMissile then return "MISSILE" end
+	return "AMMO"
+end
+
+-- Resolve blast filler used by ammo cookoff logic.
+function ACE_GetAmmoCookoffBlastMass(_, bdata)
+	if not bdata then return 0 end
+
+	local boom = tonumber(bdata.BoomFillerMass)
+	if boom and boom > 0 then return boom end
+
+	local filler = tonumber(bdata.FillerMass) or 0
+	if filler > 0 then return filler end
+
+	return 0
+end
+
+-- Resolve how many rounds are assumed to sympathetically detonate.
+function ACE_GetAmmoCookoffAmmoCount(_, ammoCount, isMissile)
+	local count = tonumber(ammoCount) or 0
+	if count <= 0 then return 0 end
+
+	if isMissile then
+		return math.max(1, count * 0.15)
+	end
+
+	return count
+end
+
+-- Resolve propellant contribution multiplier by cookoff class.
+function ACE_GetAmmoCookoffPropScale(cookClass)
+	if cookClass == "HEAT" then return 0 end
+	if cookClass == "MISSILE" then return 0.08 end
+	return 1
+end
+
+-- Resolve storage scaling by cookoff class.
+function ACE_GetAmmoCookoffStorageScale(cookClass, ammoScale, missileScale)
+	local defaultAmmoScale = tonumber(ammoScale) or 0.55
+	local defaultMissileScale = tonumber(missileScale) or 0.35
+
+	if cookClass == "MISSILE" then return defaultMissileScale end
+	return defaultAmmoScale
+end
+
+-- Determine whether bullet data should be treated as missile ammo.
+function ACE_IsAmmoMissileType(bdata)
+	if not bdata then return false end
+	if ACE_IsGLATGMAmmoType(bdata.Type) then return true end
+
+	local gunClass = ACE_GetAmmoGunClass(bdata)
+	if not gunClass then return false end
+
+	local classes = ACF and ACF.Classes and ACF.Classes.GunClass
+	local classData = classes and classes[gunClass] or nil
+
+	return classData and classData.type == "missile" or false
+end
+
+-- Determine whether bullet data should use ATGM-style missile costing.
+function ACE_IsATGMCostAmmo(bdata)
+	if not bdata then return false end
+	if ACE_IsGLATGMAmmoType(bdata.Type) then return true end
+
+	return ACE_GetAmmoGunClass(bdata) == "ATGM"
+end
+
+-- Calculate per-missile legacy points (manufacturing-cost basis), including guidance.
+function ACE_CalcMissileLegacyRoundCost(bdata)
+	if not istable(bdata) then return 0 end
+
+	local ammoId = bdata.Id
+	local rackPointCost = ACF_GetRackValue and ACF_GetRackValue(bdata, "pointcost")
+	local gunPointCost = ACF_GetGunValue and ACF_GetGunValue(ammoId, "pointcost")
+	local legacyPts = tonumber(rackPointCost or 0) or tonumber(gunPointCost or 0) or 0
+	legacyPts = math.max(legacyPts, 0)
+
+	local factor = ACE_GetMissileGuidanceFactor(bdata.Data7)
+	local basePts = legacyPts
+
+	if ACE_IsATGMCostAmmo(bdata) then
+		local cfg = ACE.ATGMCostConfig or {}
+		local perfPts = ACE_GetAmmoRoundPoints(bdata)
+		local perfMul = tonumber(cfg.PerformanceMul) or 1
+		local legacyWeight = math.Clamp(tonumber(cfg.LegacyWeight) or 0, 0, 1)
+		local minBase = tonumber(cfg.MinBase) or 25
+
+		if perfPts > 0 then
+			basePts = perfPts * perfMul
+			if legacyPts > 0 and legacyWeight > 0 then
+				basePts = basePts * (1 - legacyWeight) + legacyPts * legacyWeight
+			end
+		end
+
+		basePts = math.max(basePts, minBase)
+	end
+
+	return math.max(basePts, 0) * factor
+end
+
 -- Determine whether an ammo type should use HE utility scaling.
 function ACE_IsHEAmmoType(ammoType)
 	return ammoType == "HE" or ammoType == "HEFS" or ammoType == "CHE"
+end
+
+-- Calculate penetration threat scaling using normalized penetration.
+function ACE_GetPenThreatFactor(maxPen, cfg)
+	cfg = cfg or ACE.AmmoCostConfig or {}
+
+	local refPen = tonumber(cfg.RefPen) or 0
+	if refPen <= 0 then return 0 end
+
+	local penRatio = math.max((tonumber(maxPen) or 0) / refPen, 0)
+	if penRatio <= 0 then return 0 end
+
+	-- Keep penetration scaling linear; RoF is the primary nonlinear term.
+	return penRatio
+end
+
+-- Calculate RoF threat scaling as a saturating factor.
+function ACE_GetRofThreatFactor(rps, cfg)
+	cfg = cfg or ACE.AmmoCostConfig or {}
+
+	local rpsValue = tonumber(rps) or 0
+	if rpsValue <= 0 then return 0 end
+
+	local kneeRpm = tonumber(cfg.RofKneeRpm) or 0
+	if kneeRpm <= 0 then return 0 end
+
+	local rpm = rpsValue * 60
+	return rpm / (rpm + kneeRpm)
 end
 
 -- Compute ready rack capacity for a caliber.
@@ -851,17 +1224,15 @@ function ACE_GetAmmoRoundPoints(bdata)
 	if typeFactor <= 0 then return 0 end
 
 	local cfg = ACE.AmmoCostConfig or {}
-	local refPen = cfg.RefPen or 0
 	local refCal = cfg.RefCaliber or 0
 	local baseRound = cfg.BaseRoundPts or 0
-	if refPen <= 0 or refCal <= 0 or baseRound <= 0 then return 0 end
+	if refCal <= 0 or baseRound <= 0 then return 0 end
 
-	local penExp = cfg.PenExp or 1
+	local penFactor = ACE_GetPenThreatFactor(maxPen, cfg)
 	local blastExp = cfg.BlastExp or 1
 	local blastWeight = cfg.BlastWeight or 0
 	local refBlast = cfg.RefBlastMass or 0
 
-	local penFactor = (maxPen / refPen) ^ penExp
 	local blastFactor = 0
 	if blastMass > 0 and refBlast > 0 then
 		blastFactor = (blastMass / refBlast) ^ blastExp
@@ -877,6 +1248,11 @@ function ACE_GetAmmoRoundPoints(bdata)
 	local threatFactor = penFactor + blastFactor * blastWeight + utilFactor
 	if threatFactor <= 0 then return 0 end
 
+	local threatExp = cfg.ThreatExp or 1
+	if threatExp > 0 and threatExp ~= 1 then
+		threatFactor = threatFactor ^ threatExp
+	end
+
 	local calFactor = calMm / refCal
 
 	return baseRound * threatFactor * calFactor * typeFactor
@@ -891,15 +1267,12 @@ function ACE_GetAmmoThreatWeight(bdata)
 	if maxPen <= 0 and blastMass <= 0 then return 0 end
 
 	local cfg = ACE.AmmoCostConfig or {}
-	local refPen = cfg.RefPen or 0
 	local refBlast = cfg.RefBlastMass or 0
-	if refPen <= 0 then return 0 end
 
-	local penExp = cfg.PenExp or 1
+	local penFactor = ACE_GetPenThreatFactor(maxPen, cfg)
 	local blastExp = cfg.BlastExp or 1
 	local blastWeight = cfg.BlastWeight or 0
 
-	local penFactor = (maxPen / refPen) ^ penExp
 	local blastFactor = 0
 	if blastMass > 0 and refBlast > 0 then
 		blastFactor = (blastMass / refBlast) ^ blastExp
@@ -915,7 +1288,13 @@ function ACE_GetAmmoThreatWeight(bdata)
 		end
 	end
 
-	return penFactor + blastFactor * blastWeight + utilFactor
+	local threatFactor = penFactor + blastFactor * blastWeight + utilFactor
+	local threatExp = cfg.ThreatExp or 1
+	if threatExp > 0 and threatExp ~= 1 then
+		threatFactor = threatFactor ^ threatExp
+	end
+
+	return threatFactor
 end
 
 -- Compute sustained rounds per second for a gun/rack.
@@ -1006,12 +1385,53 @@ end
 -- Collect entities belonging to a contraption.
 function ACE_GetContraptionEntities(con, fallbackEnt)
 	local ents = {}
+	local visited = {}
+	local queue = {}
+
+	local function enqueue(ent)
+		if not ACE_IsEnt(ent) then return end
+		if visited[ent] then return end
+
+		visited[ent] = true
+		ents[#ents + 1] = ent
+		queue[#queue + 1] = ent
+	end
+
 	if con and con.ents then
 		for ent in pairs(con.ents) do
-			if ACE_IsEnt(ent) then ents[#ents + 1] = ent end
+			enqueue(ent)
 		end
 	end
-	if #ents == 0 and ACE_IsEnt(fallbackEnt) then ents[1] = fallbackEnt end
+
+	if #ents == 0 and ACE_IsEnt(fallbackEnt) then
+		enqueue(fallbackEnt)
+	end
+
+	-- Include ACF-linked entities that may not be physically welded into the contraption.
+	local idx = 1
+	while idx <= #queue do
+		local cur = queue[idx]
+		idx = idx + 1
+
+		local ammoLink = cur.AmmoLink
+		if istable(ammoLink) then
+			for _, linked in pairs(ammoLink) do
+				enqueue(linked)
+			end
+		end
+
+		local master = cur.Master
+		if istable(master) then
+			for _, linked in pairs(master) do
+				enqueue(linked)
+			end
+		end
+	end
+
+	table.sort(ents, function(a, b)
+		return a:EntIndex() < b:EntIndex()
+	end)
+
 	return ents
 end
 
@@ -1084,7 +1504,11 @@ function ACE_BuildAmmoReadyAlloc(ents)
 
 				table.sort(entries, function(a, b)
 					if a.frac == b.frac then
-						if a.rounds == b.rounds then return tostring(a.ent) < tostring(b.ent) end
+						if a.rounds == b.rounds then
+							local aIdx = IsValid(a.ent) and a.ent:EntIndex() or 0
+							local bIdx = IsValid(b.ent) and b.ent:EntIndex() or 0
+							return aIdx < bIdx
+						end
 						return a.rounds < b.rounds
 					end
 					return a.frac > b.frac
@@ -1535,6 +1959,61 @@ function ACE_GetEntLegacyCost(ent, massOverride)
 	local points = ent.ACEPoints or 0
 	if points ~= 0 then return points end
 
+	local class = ent:GetClass()
+	local acf = ent.ACF or {}
+
+	-- Armor props: derive manufacturing cost from raw thickness (mm), then apply ductility scalar.
+	if ACE.ArmorClasses and ACE.ArmorClasses[class] then
+		local mat = acf.Material or "RHA"
+		local matData = ACE_GetMaterialData and ACE_GetMaterialData(mat)
+		local armorData = ent.acfPropArmorData and ent:acfPropArmorData()
+		local armorMod = ACF.ArmorMod or 1
+		local armorMm = tonumber(acf.MaxArmour or acf.Armour) or 0
+		local curve = (armorData and armorData.Curve) or 1
+
+		-- Match point-scan weighting: KE 80% + CHEM 20% effectiveness.
+		local effKE = (armorData and armorData.Effectiveness) or (matData and matData.effectiveness) or 1
+		local effCHEM = (armorData and (armorData.HEATeffectiveness or armorData.HEATEffectiveness))
+			or (matData and (matData.HEATeffectiveness or matData.effectiveness))
+			or effKE
+		local weightedEff = effKE * 0.8 + effCHEM * 0.2
+
+		local effectiveMm = 0
+		if armorMm > 0 then
+			effectiveMm = (armorMm ^ curve) * weightedEff
+		end
+
+		local rawMm = 0
+		if effectiveMm > 0 and armorMod > 0 then
+			rawMm = effectiveMm / armorMod
+		end
+
+		local rawHP = tonumber(acf.MaxHealth or acf.Health) or 1
+		rawHP = math.max(rawHP, 1)
+
+		-- Manufacturing scalar is now driven by raw HP, not ductility:
+		-- 1 HP => 0.2x (-80%), 100 HP => 1.2x (+20%), clamped for stability.
+		local hpCostMul = math.Clamp(0.2 + (rawHP - 1) * (1.0 / 99), 0.2, 1.2)
+		local perMm = ACE.LegacyRawMmCostPerProp or 1
+
+		return math.max(rawMm * perMm * hpCostMul, 0)
+	end
+
+	-- Missile ammo crates: derive manufacturing cost from missile round points so guidance
+	-- always affects legacy cost even when ACEPoints isn't initialized yet.
+	if class == "acf_ammo" then
+		local bdata = ent.BulletData
+		if istable(bdata) and ACE_IsAmmoMissileType(bdata) then
+			local perRound = ACE_CalcMissileLegacyRoundCost(bdata)
+			if perRound > 0 then
+				local rounds = tonumber(ent.Capacity) or tonumber(ent.Ammo) or 0
+				rounds = math.max(rounds, 1)
+
+				return perRound * rounds
+			end
+		end
+	end
+
 	local mass = massOverride
 	if mass == nil then
 		local phys = ent:GetPhysicsObject()
@@ -1542,7 +2021,7 @@ function ACE_GetEntLegacyCost(ent, massOverride)
 	end
 
 	mass = tonumber(mass) or 0
-	local pointsPerTon = ACF.PointsPerTon or 0
+	local pointsPerTon = ACF.LegacyManufacturingPointsPerTon or 0
 	if mass > 0 and pointsPerTon > 0 then
 		local matTable = ACE.LegacyMatCostTables or ACE.MatCostTables or {}
 		local mat = (ent.ACF and ent.ACF.Material) or "RHA"
@@ -1596,7 +2075,8 @@ end
 -- Run the armor scan for a contraption.
 function ACE_GetArmorScan(ent)
 	if not ACE_CalcContraptionArmor then return 0, 0 end
-	return ACE_CalcContraptionArmor(ent)
+	local front, side = ACE_CalcContraptionArmor(ent)
+	return front, side
 end
 
 
