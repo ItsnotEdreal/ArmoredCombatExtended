@@ -361,7 +361,7 @@ ACF_defineGun("Black Shark Torp", {						-- id
 	effect           = "ACE_TorpedoMedium",
 	effectbooster    = "",
 	gunclass         = "NAV",
-	rack             = "1xRK",							-- Which rack to spawn this missile on?
+	rack             = "1xTorpedo",							-- Which rack to spawn this missile on?
 	length           = 250 * 2.53, --Convert to ammocrate units,
 	caliber          = 53.3,
 	weight           = 1200,								-- Don't scale down the weight though!
@@ -413,7 +413,12 @@ ACF_defineGun("Black Shark Torp", {						-- id
 	fuses	= {"Contact", "Overshoot", "Radio", "Optical", "Timed", "Altitude"},
 
 	racks	= {									-- a whitelist for racks that this missile can load into.
-					["1xRK"] = true,
+					["1xTorpedo"] = true,
+					["2xTorpedo"] = true,
+					["3xTorpedo"] = true,
+					["4xTorpedo"] = true,
+					["5xTorpedo"] = true,
+					["6xTorpedo"] = true,
 					["6xSmallTorpedo"] = true,
 					["5xSmallTorpedo"] = true,
 					["4xSmallTorpedo"] = true,
@@ -513,7 +518,7 @@ ACF_defineGun("Mk13 Torp", {						-- id
 	effect           = "ACE_TorpedoMedium",
 	effectbooster    = "",
 	gunclass         = "NAV",
-	rack             = "1xRK",							-- Which rack to spawn this missile on?
+	rack             = "1xTorpedo",							-- Which rack to spawn this missile on?
 	length           = 125 * 2.53, --Convert to ammocrate units,
 	caliber          = 57.0,
 	weight           = 1942,								-- Don't scale down the weight though!
@@ -565,7 +570,18 @@ ACF_defineGun("Mk13 Torp", {						-- id
 	fuses	= {"Contact", "Overshoot", "Radio", "Optical", "Timed", "Altitude"},
 
 	racks	= {									-- a whitelist for racks that this missile can load into.
-					["1xRK"] = true
+					["1xTorpedo"] = true,
+					["2xTorpedo"] = true,
+					["3xTorpedo"] = true,
+					["4xTorpedo"] = true,
+					["5xTorpedo"] = true,
+					["6xTorpedo"] = true,
+					["1xSmallTorpedo"] = true,
+					["2xSmallTorpedo"] = true,
+					["3xSmallTorpedo"] = true,
+					["4xSmallTorpedo"] = true,
+					["5xSmallTorpedo"] = true,
+					["6xSmallTorpedo"] = true
 				},
 
 	seekcone   = 25,								-- getting inside this cone will get you locked.  Divided by 2 ('seekcone = 40' means 80 degrees total.)	--was 25
