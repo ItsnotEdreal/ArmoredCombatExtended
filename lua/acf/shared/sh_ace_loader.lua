@@ -165,6 +165,17 @@ end
 
 function ACE_DefineAmmoCrate( id, data )
 	data.id = id
+
+	-- Backwards/forwards compatibility for legacy typo key.
+	if data.Length == nil and data.Lenght ~= nil then
+		data.Length = data.Lenght
+	elseif data.Lenght == nil and data.Length ~= nil then
+		data.Lenght = data.Length
+	elseif data.Length ~= nil and data.Lenght ~= nil and data.Length ~= data.Lenght then
+		-- Prefer canonical key when both are present but disagree.
+		data.Lenght = data.Length
+	end
+
 	table.Inherit( data, ammo_base )
 	AmmoTable[ id ] = data
 end

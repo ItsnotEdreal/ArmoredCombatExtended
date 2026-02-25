@@ -468,7 +468,19 @@ do
 
 				Model = AmmoData.model
 				Weight = AmmoData.weight
-				Dimensions = Vector( AmmoData.Lenght, AmmoData.Width, AmmoData.Height )
+
+				local Length = tonumber(AmmoData.Length or AmmoData.Lenght)
+				local Width = tonumber(AmmoData.Width)
+				local Height = tonumber(AmmoData.Height)
+
+				if not Length or not Width or not Height then
+					ErrorNoHalt(string.format("[ACE] Invalid ammo crate dimensions for '%s' (Length/Lenght=%s, Width=%s, Height=%s). Falling back to 1x1x1.\n", tostring(Id), tostring(AmmoData.Length or AmmoData.Lenght), tostring(AmmoData.Width), tostring(AmmoData.Height)))
+					Length = Length or 1
+					Width = Width or 1
+					Height = Height or 1
+				end
+
+				Dimensions = Vector( Length, Width, Height )
 
 				Ammo:SetModel( Model )
 				Ammo:PhysicsInit( SOLID_VPHYSICS )
