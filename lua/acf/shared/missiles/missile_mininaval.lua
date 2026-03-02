@@ -359,7 +359,7 @@ ACF_defineGun("Scaled Black Shark Torp", {						-- id
 	effect           = "ACE_TorpedoMedium",
 	effectbooster    = "",
 	gunclass         = "mNAV",
-	rack             = "1xRK",							-- Which rack to spawn this missile on?
+	rack             = "1xSmallTorpedo",							-- Which rack to spawn this missile on?
 	length           = 250 * 2.53, --Convert to ammocrate units,
 	caliber          = 53.3,
 	weight           = 1200,								-- Don't scale down the weight though!
@@ -509,7 +509,7 @@ ACF_defineGun("Scaled Mk13 Torp", {						-- id
 	effect           = "ACE_TorpedoMedium",
 	effectbooster    = "",
 	gunclass         = "mNAV",
-	rack             = "1xRK",							-- Which rack to spawn this missile on?
+	rack             = "1xSmallTorpedo",							-- Which rack to spawn this missile on?
 	length           = 125 * 2.53, --Convert to ammocrate units,
 	caliber          = 57.0,
 	weight           = 1942,								-- Don't scale down the weight though!
@@ -560,7 +560,12 @@ ACF_defineGun("Scaled Mk13 Torp", {						-- id
 	fuses	= {"Contact", "Overshoot", "Radio", "Optical", "Timed", "Altitude"},
 
 	racks	= {									-- a whitelist for racks that this missile can load into.
-					["1xRK"] = true
+					["1xSmallTorpedo"] = true,
+					["2xSmallTorpedo"] = true,
+					["3xSmallTorpedo"] = true,
+					["4xSmallTorpedo"] = true,
+					["5xSmallTorpedo"] = true,
+					["6xSmallTorpedo"] = true
 				},
 
 	seekcone   = 45,								-- getting inside this cone will get you locked.  Divided by 2 ('seekcone = 40' means 80 degrees total.)	--was 25

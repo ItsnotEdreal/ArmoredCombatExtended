@@ -70,7 +70,7 @@ ACF_defineGun("85mmSC", {
 	model = "models/tankgun/tankgun_short_85mm.mdl",
 	gunclass = "SC",
 	caliber = 8.5,
-	weight = 1250,
+	weight = 850,
 	maxrof = 30, -- maximum rounds per minute
 	year = 1942,
 	round = {
@@ -147,4 +147,5 @@ ACF_defineGun("170mmSC", {
 	},
 	acepoints = 2200
 } )
+
 
