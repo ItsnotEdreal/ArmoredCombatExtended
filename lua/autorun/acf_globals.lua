@@ -430,6 +430,34 @@ if SERVER then
     cvars.AddChangeCallback("acf_legality_largegunthreshold", ACF_CVarChangeCallback)
     cvars.AddChangeCallback("acf_enable_dp", ACF_CVarChangeCallback)
 
+    -- Apply archived/server convars at startup so values persist across restarts and reconnects.
+    local startupSync = {
+        "acf_healthmod",
+        "acf_armormod",
+        "acf_ammomod",
+        "acf_spalling",
+        "acf_spalling_multipler",
+        "acf_gunfire",
+        "acf_debris_lifetime",
+        "acf_debris_children",
+        "acf_explosions_scaled_he_max",
+        "acf_explosions_scaled_ents_max",
+        "acf_legacyrecoil",
+        "acf_legality_enginesrequirefuel",
+        "acf_legality_largeenginesneeddriver",
+        "acf_legality_largeenginethreshold",
+        "acf_legality_largegunsneedgunner",
+        "acf_legality_largegunthreshold",
+        "acf_enable_dp"
+    }
+
+    for _, name in ipairs(startupSync) do
+        local convar = GetConVar(name)
+        if convar then
+            ACF_CVarChangeCallback(name, nil, convar:GetString())
+        end
+    end
+
 elseif CLIENT then
 ---------------------------------- Clientside Convars ----------------------------------
 
