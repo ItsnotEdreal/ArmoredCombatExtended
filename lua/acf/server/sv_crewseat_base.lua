@@ -6,7 +6,7 @@
 
 include("acf/shared/sh_crewseat_base.lua")
 
-local crewseatDebug = CreateConVar("ace_debug_crewseat_models", "0", FCVAR_ARCHIVE, "Log crewseat model/type changes during dupe paste")
+local crewseatDebug = CreateConVar("acf_debug_crewseat_models", "0", FCVAR_ARCHIVE, "Log crewseat model/type changes during dupe paste")
 
 -- Resolve a crewseat model type from dupe data or the current model path.
 function ACE_CrewseatResolveModelType(ent, info)

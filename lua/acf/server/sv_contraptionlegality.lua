@@ -403,8 +403,7 @@ end
 -- Debug logging 
 -- ------------------------------------------------------------
 
-ACE.ArmorDebugCvar = ACE.ArmorDebugCvar or CreateConVar(
-	"ace_armor_debug",
+ACE.ArmorDebugCvar = ACE.ArmorDebugCvar or CreateConVar("acf_armor_debug",
 	"0",
 	FCVAR_ARCHIVE,
 	ACE_ConVarHelp("Enable stored armor dirty logging (no live console spam).")
@@ -412,8 +411,7 @@ ACE.ArmorDebugCvar = ACE.ArmorDebugCvar or CreateConVar(
 
 local armorDebugCvar = ACE.ArmorDebugCvar
 
-local armorDirtyLogLimit = CreateConVar(
-	"ace_armor_dirty_log_limit",
+local armorDirtyLogLimit = CreateConVar("acf_armor_dirty_log_limit",
 	"120",
 	FCVAR_ARCHIVE,
 	ACE_ConVarHelp("How many stored dirty entries to keep.")
@@ -609,8 +607,7 @@ ACE.DupeArmorCacheVersion = ACE.DupeArmorCacheVersion or 1
 ACE.DupeArmorCacheLastClear = ACE.DupeArmorCacheLastClear or CurTime()
 ACE.DupeSubsystemCacheLastClear = ACE.DupeSubsystemCacheLastClear or CurTime()
 
-local DupeArmorCacheTtl = CreateConVar(
-	"ace_dupe_armor_cache_ttl",
+local DupeArmorCacheTtl = CreateConVar("acf_dupe_armor_cache_ttl",
 	"1800",
 	FCVAR_ARCHIVE,
 	ACE_ConVarHelp("Seconds between clearing the dupe armor cache (0 disables).")
