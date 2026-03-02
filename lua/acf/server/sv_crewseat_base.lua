@@ -441,3 +441,4 @@ function ACE_FindReplacementLoader(ent, maxDistSqr)
 
 	return replaceEnt, closestDist
 end
+
