@@ -14,10 +14,8 @@ if CLIENT then
 	TOOL.Information = {
 		{ name = "left" },
 		{ name = "right" },
-		{ name = "reloadhint" }
+		{ name = "reload" }
 	}
-
-	language.Add("tool.acfarmorprop.reloadhint", "Get information about contraption (double-tap R for preview values)")
 end
 
 -- Shared panel state used across panel rebuilds to keep UI controls stable.
@@ -164,13 +162,17 @@ function TOOL:Reload( trace )
 		return value
 	end
 
-	local function normalizePointDetails(rawDetails)
+	local function normalizePointDetails(rawDetails, armorLineSource)
 		local source = istable(rawDetails) and rawDetails or {}
 		local details = {
 			Items = istable(source.Items) and source.Items or {},
-			AmmoLines = {},
-			ArmorLines = {}
+			AmmoLines = istable(source.AmmoLines) and source.AmmoLines or {},
+			ArmorLines = istable(source.ArmorLines) and source.ArmorLines or {}
 		}
+
+		if istable(armorLineSource) then
+			details.ArmorLines = armorLineSource
+		end
 
 		return details
 	end
@@ -186,6 +188,7 @@ function TOOL:Reload( trace )
 
 	local Contraption = ent:GetContraption() or nil
 	local details = Contraption and Contraption.ACEPointsDetails or nil
+	local armorLines = Contraption and Contraption.ACEArmorDetails or nil
 	local PointVal		= 0
 
 	local PtsArmor = 0
@@ -285,7 +288,7 @@ function TOOL:Reload( trace )
 		sideArm = HypoSide
 	end
 
-	local netDetails = normalizePointDetails(details)
+	local netDetails = normalizePointDetails(details, armorLines)
 
 	local GeneralTb	= { data.MaterialMass or {}, data.MaterialPercent or {}, netDetails }
 	local ToJSON		= util.TableToJSON( GeneralTb )
@@ -411,25 +414,6 @@ local function ACE_GetAmmoCostForCaliber(con, caliberMm)
 	return total
 end
 
--- Sum ammo points for crates compatible with a rack.
-local function ACE_GetAmmoCostForRack(con, rack)
-	if not con or not con.ents or not IsValid(rack) then return 0 end
-	if not ACF_CanLinkRack or not rack.Id then return 0 end
-
-	local total = 0
-
-	for ent in pairs(con.ents) do
-		if IsValid(ent) and ent:GetClass() == "acf_ammo" then
-			local bdata = ent.BulletData
-			if istable(bdata) and ACF_CanLinkRack(rack.Id, bdata.Id, bdata, rack) then
-				total = total + (ACE_GetAmmoCratePointsForContraption(ent, con, ent) or 0)
-			end
-		end
-	end
-
-	return total
-end
-
 -- Resolve point category for a class.
 local function ACE_GetPointsCategory(ent)
 	if not IsValid(ent) then return nil end
@@ -442,7 +426,7 @@ end
 
 -- Compute popup points and label for an entity.
 -- Order: entity points, gun-caliber ammo total, then category total.
-local ArmorPopupDebug = SERVER and CreateConVar("acf_debug_armor_popup", "0", FCVAR_ARCHIVE, "Debug armor popup per-entity contribution lookup.", 0, 1) or nil
+local ArmorPopupDebug = SERVER and CreateConVar("ace_debug_armor_popup", "0", FCVAR_ARCHIVE, "Debug armor popup per-entity contribution lookup.", 0, 1) or nil
 local ArmorPopupDebugLast = {}
 
 local function ACE_DebugArmorPopup(ply, ent, con, matchedRow)
@@ -492,14 +476,6 @@ local function ACE_GetPopupPoints(ent, ply)
 			end
 
 			return points, label
-		end
-	end
-
-	-- Racks fall back to the ammo cost of crates compatible with this rack.
-	if cls == "acf_rack" then
-		local ammoCost = ACE_GetAmmoCostForRack(con, ent)
-		if ammoCost > 0 then
-			return ammoCost, "Total Rack Ammo Cost"
 		end
 	end
 
@@ -819,7 +795,6 @@ if CLIENT then
 		local power		= net.ReadFloat() -- Preserve precision for hp/ton calculation.
 		local LegacyCost	= math.Round( net.ReadFloat(), 1 )
 		local CostDisplay	= math.Round( LegacyCost * 100, 0 )
-		local CostDisplayText = string.Comma(math.max(math.floor(CostDisplay), 0))
 
 
 		local hpton		= math.Round( power / (total / 1000), 1 )
@@ -831,7 +806,7 @@ if CLIENT then
 		local PtsAmmo = math.Round( net.ReadFloat(), 1 )
 		local PtsAmmoReady = math.Round( net.ReadFloat(), 1 )
 		local PtsAmmoBackup = math.Round( net.ReadFloat(), 1 )
-		net.ReadFloat()
+		local AmmoReadyRounds = math.Round( net.ReadFloat(), 0 )
 		local _ = math.Round( net.ReadFloat(), 0 )
 		local PtsCrew = math.Round( net.ReadFloat(), 1 )
 		local PtsElectronics = math.Round( net.ReadFloat(), 1 )
@@ -944,7 +919,7 @@ if CLIENT then
 		SummaryPoints = { Color4, "-Points Cost: ", Color3, "" .. PointVal .. "pts" .. Sep }
 	end
 
-	local SummaryCost = { Color4, "-Manufacturing Cost: ", Color3, "$" .. CostDisplayText .. Sep }
+	local SummaryCost = { Color4, "-Manufacturing Cost: ", Color3, "$" .. CostDisplay .. Sep }
 	local TMass2 = {
 		Color4, "-Mass Ratio: ", Color3, "" .. phystotal .. "kg",
 		Color4, " physical, ", Color3, "" .. parenttotal .. "kg",
@@ -1023,7 +998,7 @@ if CLIENT then
 			})
 		end
 		if not ArmorInitMissing and fullReadout then
-			table.Add(Tabletxt, { Color4, "Manufacturing Cost: ", Color3, "$" .. CostDisplayText .. Sep })
+			table.Add(Tabletxt, { Color4, "Manufacturing Cost: ", Color3, "$" .. CostDisplay .. Sep })
 		end
 	else
 		Tabletxt = table.Add(Tabletxt, PTBreakdownHeader)
@@ -1043,7 +1018,7 @@ if CLIENT then
 			TPoints = { Color4, totalLabel, Color3, "" .. PointVal .. "pts" .. Sep }
 		end
 		table.Add(Tabletxt, TPoints)
-		table.Add(Tabletxt, { Color4, "Manufacturing Cost: ", Color3, "$" .. CostDisplayText .. Sep })
+		table.Add(Tabletxt, { Color4, "Manufacturing Cost: ", Color3, "$" .. CostDisplay .. Sep })
 		if ArmorDirty then
 			table.Add(Tabletxt, { Color1, "[!] Armor cost dirty; respawn to recalc." .. Sep })
 		elseif ArmorInitMissing and not HypoUsed then
@@ -1084,6 +1059,8 @@ if CLIENT then
 					end
 					table.Add(Tabletxt, { Color3, "    " .. line .. Sep })
 				end
+			elseif AmmoReadyRounds > 0 then
+				table.Add(Tabletxt, { Color3, "    " .. AmmoReadyRounds .. " rds READY" .. Sep })
 			end
 		end
 		table.Add(Tabletxt, { Color4, "Crew: ", Color3, "(" .. pct(PtsCrew, PointVal) .. "%) - ", PtsCrew .. FractionalPts .. Sep })
@@ -1173,6 +1150,7 @@ if CLIENT then
 
 	-- Draw the hover tooltip and popup text.
 	function TOOL:DrawHUD()
+
 		local ent = self:GetOwner():GetEyeTrace().Entity
 		if not IsValid( ent ) or ent:IsPlayer() then return end
 
@@ -1196,17 +1174,8 @@ if CLIENT then
 
 		local pointLine = ""
 		if acepointcost > 0 then
-			local roundedPoints = math.Round(acepointcost, 1)
-			local whole = math.floor(roundedPoints)
-			local frac = math.floor((roundedPoints - whole) * 10 + 0.5)
-			local pointText = string.Comma(whole)
-			if frac > 0 then
-				pointText = pointText .. "." .. frac
-			end
-			pointLine = string.format("%s: %spts\n", pointLabel, pointText)
+			pointLine = string.format("%s: %spts\n", pointLabel, math.Round(acepointcost, 1))
 		end
-
-		local costText = string.Comma(math.max(math.Round(acecost * 100, 0), 0))
 
 		local text = string.format(overlayTextFormat,
 			math.Round(curmass, 2),
@@ -1218,7 +1187,7 @@ if CLIENT then
 			math.Round(health, 2),
 			MatData.sname,
 			pointLine,
-			costText
+			math.Round(acecost * 100, 0)
 		)
 
 		local pos = ent:WorldSpaceCenter()
