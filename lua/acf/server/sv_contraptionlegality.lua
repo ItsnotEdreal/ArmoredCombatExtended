@@ -539,6 +539,7 @@ end)
 function ACE_NotifyContraptionModified(con)
 	if not ACE_HasArmorInit(con) then return end
 	if con.ACERemoving then return end
+	if not con.aceEntities then return end
 	if not con.ACEArmorDirty then return end
 
 	local base = con.GetACEBaseplate and con:GetACEBaseplate()
