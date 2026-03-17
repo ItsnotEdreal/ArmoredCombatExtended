@@ -157,7 +157,7 @@ function SWEP:PrimaryAttack()
 				Owner = owner,
 				Launcher = owner,
 
-				Pos = owner:GetShootPos() + owner:GetAimVector() * 1100,
+				Pos = owner:GetShootPos() + owner:GetAimVector() * 1500,
 				Ang = owner:GetAimVector():Angle(),
 
 				Mdl = "models/munitions/round_100mm_mortar_shot.mdl",
@@ -175,7 +175,7 @@ function SWEP:PrimaryAttack()
 				BoostTime = 0,
 				BoostDelay = 0,
 
-				Drag = 0.001,
+				Drag = 0.003,
 				GuidanceName = "Dumb",
 				FuseName = "Contact",
 				HasInertial = false,
@@ -186,8 +186,8 @@ function SWEP:PrimaryAttack()
 				ArmorThickness = 8,
 
 				MotorSound = "acf_extra/airfx/rpg_fire.wav",
-				BoostEffect = "ACE_RocketBlackSmoke",
-				MotorEffect = "ACE_RocketBlackSmoke"
+				BoostEffect = "rocket_smoke",
+				MotorEffect = "rocket_smoke"
 			}
 			local BData = self.BulletData
 			BData.BulletData = nil

@@ -63,12 +63,13 @@ function EFFECT:Init( data )
 		if Gun:WaterLevel() ~= 3 then
 
 			-- Gets the appropiated muzzleflash according to the defined in the gun class
-			local MuzzleTable = ACE.MuzzleFlashes
-			local MuzzleFunction = MuzzleTable[MuzzleEffect].muzzlefunc
-			local MuzzleCallBack = MuzzleTable["Default"].muzzlefunc
+			local MuzzleTable = ACE.MuzzleFlashes or {}
+			local MuzzleEntry = MuzzleTable[MuzzleEffect]
+			local MuzzleFunction = MuzzleEntry and MuzzleEntry.muzzlefunc
+			local MuzzleCallBack = (MuzzleTable["Default"] and MuzzleTable["Default"].muzzlefunc) or nil
 			if MuzzleFunction then
 				MuzzleFunction( self )
-			else
+			elseif MuzzleCallBack then
 				MuzzleCallBack( self )
 			end
 

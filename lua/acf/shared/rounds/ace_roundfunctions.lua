@@ -9,12 +9,19 @@ do
 
 	function ACF_RoundBaseGunpowder( PlayerData, Data, ServerData, GUIData )
 
-		local BulletMax = ACF.Weapons["Guns"][PlayerData["Id"]]["round"]
+		local GunData = ACF.Weapons["Guns"][PlayerData["Id"]]
+		local BulletMax = GunData["round"]
+		local GunClass = ACF.Classes.GunClass[GunData["gunclass"]] or {}
+		local IsMissile = GunClass.type == "missile"
 		--local Type = PlayerData.Type or ""
 
 		GUIData.MaxTotalLength    = BulletMax.maxlength * (Data.LengthAdj or 1)
 
-		Data.Caliber              = ACF.Weapons["Guns"][PlayerData["Id"]]["caliber"]
+		Data.BodyCaliber          = GunData["caliber"]
+		-- Missiles now use real body caliber end-to-end by default.
+		-- This removes dependence on per-missile override hacks/fake ballistic calibers.
+		Data.WarheadCaliber       = Data.BodyCaliber
+		Data.Caliber              = Data.WarheadCaliber
 		Data.FrArea               = PI * (Data.Caliber / 2) ^ 2
 
 		Data.Tracer               = PlayerData.Tracer > 0 and math.min(Data.Caliber / 5, 3) or 0 --Tracer space calcs
@@ -27,7 +34,18 @@ do
 		GUIData.MinPropLength = 0.01
 		GUIData.MaxPropLength = math.max(math.min(GUIData.MaxTotalLength - CurLength + PlayerData.PropLength, PropMax), GUIData.MinPropLength) --Check if the desired prop lenght fits in the case and doesn't exceed the gun max
 
-		GUIData.MinProjLength = Data.Caliber * 1.5
+		local MinProjLength = BulletMax.minprojlength or GunData.minprojlength
+		if MinProjLength == nil then
+			local MinProjRatio = BulletMax.minprojratio or GunData.minprojratio
+			if MinProjRatio == nil then
+				MinProjRatio = IsMissile and 0.5 or 1.5
+			end
+
+			local MinProjCaliber = IsMissile and Data.BodyCaliber or Data.Caliber
+			MinProjLength = MinProjCaliber * MinProjRatio
+		end
+
+		GUIData.MinProjLength = math.max(MinProjLength, 0.01)
 		GUIData.MaxProjLength = math.max(GUIData.MaxTotalLength - CurLength + PlayerData.ProjLength, GUIData.MinProjLength ) --Check if the desired proj lenght fits in the case
 
 		--This is to check the current ratio between elements if i need to clamp it
@@ -73,7 +91,7 @@ do
 		local D0 = DragCoef * V0 ^ 2 / ACF.DragDiv -- initial drag
 		local K1 = (D0 / (V0 ^ (3 / 2))) ^ -1 -- estimated drag coefficient
 		local Vel = math.max(math.sqrt(V0) - ((Range * 39.37) / (2 * K1)), 0) ^ 2
-		local Pen = (ACF_Kinetic(Vel, ProjMass, LimitVel).Penetration / PenArea) * ACF.KEtoRHA
+		local Pen = ACE_CalcPenetration(ACF_Kinetic(Vel, ProjMass, LimitVel), PenArea)
 
 		return Vel * 0.0254, Pen
 	end

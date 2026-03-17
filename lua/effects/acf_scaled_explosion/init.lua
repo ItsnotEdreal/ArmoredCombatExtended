@@ -3,7 +3,15 @@ Initializes the effect. The data is a table of data
 which was passed from the server.
 ---------------------------------------------------------]]
 
+local EffectDebugCvar = CreateClientConVar("acf_effect_debug", "0", true, false, "Log ACE clientside effect entry/exit.")
+local function DebugEffect(tag)
+	if EffectDebugCvar:GetBool() then
+		print(("[ACE Effect] %s"):format(tag))
+	end
+end
+
 function EFFECT:Init( data )
+	DebugEffect("acf_scaled_explosion Init:Enter")
 
 	self.HitWater = false
 	self.UnderWater = false
@@ -93,6 +101,7 @@ function EFFECT:Init( data )
 	end
 
 	if IsValid(self.Emitter) then self.Emitter:Finish() end
+	DebugEffect("acf_scaled_explosion Init:Exit")
 end
 
 
@@ -402,7 +411,11 @@ end
 
 function EFFECT:Shockwave( Ground, SmokeColor )
 
-	if not self.Emitter then return end
+	if not self.Emitter then
+		DebugEffect("acf_scaled_explosion Shockwave:NoEmitter")
+		return
+	end
+	DebugEffect("acf_scaled_explosion Shockwave:Enter")
 
 	local PMul       = 1
 	local Radius     = (1-Ground.Fraction) * self.Radius
@@ -458,6 +471,7 @@ function EFFECT:Shockwave( Ground, SmokeColor )
 	end
 
 
+	DebugEffect("acf_scaled_explosion Shockwave:Exit")
 end
 
 local TextureTb = {
@@ -476,7 +490,11 @@ local TextureTb = {
 
 function EFFECT:Water( Water )
 
-	if not self.Emitter then return end
+	if not self.Emitter then
+		DebugEffect("acf_scaled_explosion Water:NoEmitter")
+		return
+	end
+	DebugEffect("acf_scaled_explosion Water:Enter")
 
 	local PMul = 1
 
@@ -535,11 +553,16 @@ function EFFECT:Water( Water )
 			Whisp:SetColor( WaterColor.r-SMKColor,WaterColor.g-SMKColor,WaterColor.b-SMKColor )
 		end
 	end
+	DebugEffect("acf_scaled_explosion Water:Exit")
 end
 
 function EFFECT:Concrete( SmokeColor )
 
-	if not self.Emitter then return end
+	if not self.Emitter then
+		DebugEffect("acf_scaled_explosion Concrete:NoEmitter")
+		return
+	end
+	DebugEffect("acf_scaled_explosion Concrete:Enter")
 
 	for _ = 0, 5 * self.Radius do --Flying Debris
 
@@ -583,11 +606,16 @@ function EFFECT:Concrete( SmokeColor )
 			Smoke:SetColor(  SmokeColor.r,SmokeColor.g,SmokeColor.b  )
 		end
 	end
+	DebugEffect("acf_scaled_explosion Concrete:Exit")
 end
 
 function EFFECT:Dirt( SmokeColor )
 
-	if not self.Emitter then return end
+	if not self.Emitter then
+		DebugEffect("acf_scaled_explosion Dirt:NoEmitter")
+		return
+	end
+	DebugEffect("acf_scaled_explosion Dirt:Enter")
 
 	local ScaleMul = 1
 
@@ -646,10 +674,15 @@ function EFFECT:Dirt( SmokeColor )
 	end
 
 
+	DebugEffect("acf_scaled_explosion Dirt:Exit")
 end
 
 function EFFECT:Sand( SmokeColor )
-	if not self.Emitter then return end
+	if not self.Emitter then
+		DebugEffect("acf_scaled_explosion Sand:NoEmitter")
+		return
+	end
+	DebugEffect("acf_scaled_explosion Sand:Enter")
 
 	for _ = 0, 3 * self.Radius do
 
@@ -679,6 +712,7 @@ function EFFECT:Sand( SmokeColor )
 			Smoke:SetColor(  SmokeColor.r,SmokeColor.g,SmokeColor.b  )
 		end
 	end
+	DebugEffect("acf_scaled_explosion Sand:Exit")
 end
 
 function EFFECT:Airburst()

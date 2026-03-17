@@ -29,7 +29,7 @@ ACF_defineGun("GBU-39", {						-- id
 	gunclass		= "GBU",
 	rack			= "1xRK",						-- Which rack to spawn this missile on?
 	length			= 225,
-	caliber			= 10,
+	caliber			= 19.0,
 	weight			= 129,							-- Don't scale down the weight though!
 	year			= 1976,
 	modeldiameter	= 12,					-- in cm
@@ -94,7 +94,7 @@ ACF_defineGun("FAB250-UPMP", {						-- id
 	gunclass		= "GBU",
 	rack			= "1xRK",						-- Which rack to spawn this missile on?
 	length			= 225,
-	caliber			= 10,
+	caliber			= 25.0,
 	weight			= 257,							-- Don't scale down the weight though!
 	year			= 1976,
 	modeldiameter	= 12,					-- in cm
@@ -158,7 +158,7 @@ ACF_defineGun("227kgGBU", {						-- id
 	gunclass		= "GBU",
 	rack			= "1xRK",						-- Which rack to spawn this missile on?
 	length			= 225,
-	caliber		= 10.5,
+	caliber		= 27.3,
 	weight			= 227,							-- Don't scale down the weight though!
 	year			= 1976,
 	modeldiameter	= 12,					-- in cm
@@ -221,7 +221,7 @@ ACF_defineGun("454kgGBU", {						-- id
 	gunclass		= "GBU",
 	rack			= "1xRK",						-- Which rack to spawn this missile on?
 	length			= 264,
-	caliber		= 17.0,
+	caliber		= 35.6,
 	weight			= 454,							-- Don't scale down the weight though!
 	year			= 1976,
 	modeldiameter	= 13,					-- in cm
@@ -281,7 +281,7 @@ ACF_defineGun("909kgGBU", {						-- id
 	gunclass		= "GBU",
 	rack			= "1xRK",						-- Which rack to spawn this missile on?
 	length			= 320,
-	caliber		= 20.0,
+	caliber		= 45.7,
 	weight			= 909,							-- Don't scale down the weight though!
 	year			= 1976,
 	modeldiameter	= 20,					-- in cm

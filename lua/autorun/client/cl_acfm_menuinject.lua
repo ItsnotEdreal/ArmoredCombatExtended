@@ -2,8 +2,35 @@
 
 include("acf/client/cl_acfmenu_missileui.lua")
 
+if not ACF then ACF = {} end
+if not ACF.ChatMessageReceiver then
+	ACF.ChatMessageReceiver = true
+	net.Receive("colorchatmessage", function()
+		chat.AddText(net.ReadColor(), net.ReadString())
+	end)
+end
+
 
 local ACFEnts = ACF.Weapons
+
+local function FormatWithCommas(Value, Decimals)
+	local Number = tonumber(Value)
+	if not Number then return tostring(Value or 0) end
+
+	if Decimals and Decimals > 0 then
+		local Format = "%." .. Decimals .. "f"
+		local Text = string.format(Format, Number)
+		local Whole, Fraction = Text:match("^(%-?%d+)%.(%d+)$")
+
+		if Whole and Fraction then
+			return string.Comma(tonumber(Whole) or 0) .. "." .. Fraction
+		end
+
+		return Text
+	end
+
+	return string.Comma(math.floor(Number + 0.5))
+end
 
 function SetMissileGUIEnabled(_, enabled, gundata)
 
@@ -186,7 +213,8 @@ function CreateRackSelectGUI(node)
 		acfmenupanel.CData.RackSelect = vgui.Create( "DComboBox", acfmenupanel.CustomDisplay )
 		acfmenupanel.CData.RackSelect:SetSize(100, 30)
 
-		acfmenupanel.CData.RackSelect.OnSelect = function( _ , _ , data )
+		acfmenupanel.CData.RackSelect.OnSelect = function( panel, index, _, data )
+			data = data or panel:GetOptionData(index)
 			RunConsoleCommand( "acfmenu_data9", data )
 
 			local rack = ACF.Weapons.Racks[data]
@@ -209,8 +237,11 @@ function CreateRackSelectGUI(node)
 				acfmenupanel:CPanelText("RackTitle", rack.name or "Missing Name","DermaDefaultBold")
 				acfmenupanel:CPanelText("RackDesc", (rack.desc or "Missing Desc") .. "\n")
 
-				acfmenupanel:CPanelText("RackEweight", "Weight when empty : " .. (rack.weight or "Missing weight") .. "kg")
-				acfmenupanel:CPanelText("RackFweight", "Weight when fully loaded : " .. ( (rack.weight or 0) + (table.Count(rack.mountpoints) * node.mytable.weight) ) .. "kg")
+				local EmptyWeight = tonumber(rack.weight) or 0
+				local FullWeight = EmptyWeight + (table.Count(rack.mountpoints) * (tonumber(node.mytable.weight) or 0))
+
+				acfmenupanel:CPanelText("RackEweight", "Weight when empty : " .. FormatWithCommas(EmptyWeight, 1) .. "kg")
+				acfmenupanel:CPanelText("RackFweight", "Weight when fully loaded : " .. FormatWithCommas(FullWeight, 1) .. "kg")
 				acfmenupanel:CPanelText("Rack_Year", "Year : " .. rack.year .. "\n")
 			end
 		end
@@ -230,7 +261,14 @@ function CreateRackSelectGUI(node)
 
 	local default = node.mytable.rack
 	for _, Value in pairs( ACF_GetCompatibleRacks(node.mytable.id) ) do
-		acfmenupanel.CData.RackSelect:AddChoice( Value, Value, Value == default )
+		local Display = Value
+		local Rack = ACF.Weapons.Racks[Value]
+		if Rack then
+			local RackWeight = tonumber(Rack.weight) or 0
+			Display = string.format("%s (%skg)", Value, FormatWithCommas(RackWeight, 1))
+		end
+
+		acfmenupanel.CData.RackSelect:AddChoice( Display, Value, Value == default )
 	end
 
 
@@ -270,7 +308,8 @@ function ModifyACFMenu(panel)
 
 	end
 
-	local rootNodes = HomeNode.ChildNodes:GetChildren()  --lets find all our folder inside of Main menu
+	local rootNodes = HomeNode and HomeNode.ChildNodes and HomeNode.ChildNodes:GetChildren()  -- lets find all our folders inside the main menu
+	if not rootNodes then return false end
 
 	local gunsNode
 
@@ -282,43 +321,52 @@ function ModifyACFMenu(panel)
 		end
 	end
 
-	if gunsNode then
-		local classNodes = gunsNode.ChildNodes:GetChildren()
-		local gunClasses = ACF.Classes.GunClass
+	if not (gunsNode and gunsNode.ChildNodes) then return false end
 
-		for _, node in pairs(classNodes) do
-			local gunNodeElement = node.ChildNodes
+	local classNodes = gunsNode.ChildNodes:GetChildren()
+	local gunClasses = ACF.Classes.GunClass
+	local foundAnyChildren = false
+	local patchedAny = false
+	local foundAnyMissileEntries = false
 
-			if gunNodeElement then
-				local gunNodes = gunNodeElement:GetChildren()
+	for _, node in pairs(classNodes) do
+		local gunNodeElement = node.ChildNodes
+		if not gunNodeElement then continue end
 
-				for _, gun in pairs(gunNodes) do
-					local class = gunClasses[gun.mytable.gunclass]
+		local gunNodes = gunNodeElement:GetChildren()
+		if #gunNodes > 0 then
+			foundAnyChildren = true
+		end
 
-					if (class and class.type == "missile") and not gun.ACFMOverridden then
-						local oldclick = gun.DoClick
+		for _, gun in pairs(gunNodes) do
+			if not (gun.mytable and gun.mytable.gunclass) then continue end
 
-						gun.DoClick = function(self)
-							oldclick(self)
-							CreateRackSelectGUI(self)
-						end
+			local class = gunClasses[gun.mytable.gunclass]
 
-						gun.ACFMOverridden = true
+			if class and class.type == "missile" then
+				foundAnyMissileEntries = true
+
+				if not gun.ACFMOverridden then
+					local oldclick = gun.DoClick
+
+					gun.DoClick = function(self)
+						oldclick(self)
+						CreateRackSelectGUI(self)
 					end
+
+					gun.ACFMOverridden = true
+					patchedAny = true
 				end
-			else
-				ErrorNoHalt("ACFM: Unable to find guns for class " .. node:GetText() .. ".\n")
 			end
 		end
-	else
-		ErrorNoHalt("ACFM: Unable to find the ACF Guns node.")
 	end
+
+	return foundAnyChildren and (patchedAny or foundAnyMissileEntries)
 
 end
 
 function FindACFMenuPanel()
-	if acfmenupanel then
-		ModifyACFMenu(acfmenupanel)
+	if acfmenupanel and ModifyACFMenu(acfmenupanel) then
 		timer.Remove("FindACFMenuPanel")
 	end
 end

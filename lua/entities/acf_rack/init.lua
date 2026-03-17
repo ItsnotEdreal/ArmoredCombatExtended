@@ -23,10 +23,12 @@ local RackWireDescs = {
 	["Reload"]       = "Arms this rack. Its mandatory to set this since racks don't reload automatically.",
 	["TargetPos"]    = "Defines the Target position for the ordnance in this rack. This only works for Wire and laser guidances.",
 	["Delay"]        = "Sets a specific delay to guidance control over the default one in seconds.",
+	["Detonate"]        = "Remotely detonate any currently outbound missiles.",
 
 	--Outputs
 	["Ready"]        = "Returns if the rack is ready to fire.",
-	["CurMissile"]        = "Outputs the next position of the missile in the rack getting fired."
+	["CurMissile"]        = "Outputs the next position of the missile in the rack getting fired.",
+	["PositionFiredMissile"] = "Outputs the position of the missile last fired by this launcher"
 
 }
 
@@ -77,15 +79,16 @@ function ENT:Initialize()
 
 	self.SelfContraption = nil
 
-	self.Inputs = WireLib.CreateSpecialInputs( self, { "Fire",	"Reload (" .. RackWireDescs["Reload"] .. ")",	"Target Pos (" .. RackWireDescs["TargetPos"] .. ")", "Activate Guidance", "Track Delay (" .. RackWireDescs["Delay"] .. ")" },
-													{ "NORMAL", "NORMAL", "VECTOR", "NORMAL", "NORMAL" } )
+	self.Inputs = WireLib.CreateSpecialInputs( self, { "Fire",	"Reload (" .. RackWireDescs["Reload"] .. ")",	"Target Pos (" .. RackWireDescs["TargetPos"] .. ")", "Activate Guidance", "Track Delay (" .. RackWireDescs["Delay"] .. ")", "Detonate Missile (" .. RackWireDescs["Detonate"] .. ")" },
+													{ "NORMAL", "NORMAL", "VECTOR", "NORMAL", "NORMAL", "NORMAL" } )
 
-	self.Outputs = WireLib.CreateSpecialOutputs( self,  { "Ready (" .. RackWireDescs["Ready"] .. ")",	"Shots Left", "AcquiredTarget", "TargetDirection", "Current Missile", "Missile Info", "CurMissile" },
-														{ "NORMAL", "NORMAL", "NORMAL", "VECTOR", "ENTITY", "STRING", "NORMAL" } )
+	self.Outputs = WireLib.CreateSpecialOutputs( self,  { "Ready (" .. RackWireDescs["Ready"] .. ")",	"Shots Left", "AcquiredTarget", "TargetDirection", "Current Missile", "Missile Info", "CurMissile", "PositionFiredMissile" },
+														{ "NORMAL", "NORMAL", "NORMAL", "VECTOR", "ENTITY", "STRING", "NORMAL", "VECTOR" } )
 
 	Wire_TriggerOutput(self, "Ready", 1)
 	Wire_TriggerOutput(self, "Current Missile", nil)
 	Wire_TriggerOutput(self, "Missile Info", "")
+	Wire_TriggerOutput(self, "PositionFiredMissile", vector_origin)
 	self.WireDebugName = "ACF Rack"
 
 	self.lastCol = self:GetColor() or Color(255, 255, 255)
@@ -102,6 +105,10 @@ function ENT:Initialize()
 	self.UpdateNextMissile		= 0
 	self.NextAuxilaryFunctions	= 0
 	self.Inaccuracy				= 0
+
+	self.LastFiredMissile = nil
+
+	self.ScuttleMissiles = false
 
 
 	self.MissileEntity = NULL
@@ -231,6 +238,12 @@ function ENT:TriggerInput( iname , value )
 		else
 			self.TrackDelay = 0
 		end
+	elseif iname == "Detonate Missile" then
+		if value > 0 then
+			self.ScuttleMissiles = true
+		else
+			self.ScuttleMissiles = false
+		end
 	elseif iname == "Activate Guidance" then
 		if value > 0 then
 			self.GuidanceActive = true
@@ -324,6 +337,11 @@ function ENT:Think()
 		end
 	end
 
+	if IsValid(self.LastFiredMissile) then
+		Wire_TriggerOutput(self, "PositionFiredMissile", self.LastFiredMissile.MissilePosition or vector_origin)
+	else
+		Wire_TriggerOutput(self, "PositionFiredMissile", vector_origin)
+	end
 
 	if CT > self.NextHudUpdate then
 		self.NextHudUpdate = CT + 0.5
@@ -416,6 +434,8 @@ function ENT:ShootMissile()
 	Wire_TriggerOutput(self, "Missile Info", "")
 
 	--Activate the missile
+	self.LastFiredMissile = self.Missiles[MissileToShoot][1]
+
 	self.Missiles[MissileToShoot][1].MissileActive = true
 	self.Missiles[MissileToShoot][1].GuidanceActive = true
 	if self.TargPos then
@@ -652,7 +672,7 @@ function ENT:AddMissile(MissileSlot) --Where the majority of the missile paramat
 	self.ReloadDelay = ACF_GetRackValue(BulletData, "reloaddelay") or ACF_GetGunValue(BulletData.Id, "reloaddelay") or 1
 	self.Inaccuracy = ACF_GetRackValue(BulletData, "inaccuracy") or ACF_GetGunValue(BulletData.Id, "inaccuracy") or 0
 
-	missile.ACEPoints = CalculateMissileCost(BulletData)
+	missile.ACEPoints = CalculateMissileCost(Crate.BulletData)
 
 	if missile:IsValid() then
 		self:EmitSound("acf_extra/tankfx/gnomefather/reload12.wav", 500, 110)
@@ -1027,9 +1047,10 @@ do
 	--Jank terrible bad hardcoded function to copy bullet data over so it can be spawned by the missle. Has variables to convert every type of round data. There has to be a better way.
 	function BulletDataMath(self)
 
+		local SourceData = self.Bulletdata2 or self.BulletData or {}
 
 		self.Bulletdata2 = {}
-		self.Bulletdata2.Type = self.BulletData.Type
+		self.Bulletdata2.Type = SourceData.Type or self.BulletData.Type
 
 		--print(self.Bulletdata2.Type)
 
@@ -1039,18 +1060,18 @@ do
 			self.Bulletdata2.FuseLength = 0.2 --The missile exploded. The shell shouldn't travel across the map.
 		end
 
-		self.Bulletdata2.Id = self.BulletData.Id
-		self.Bulletdata2.Caliber = self.BulletData.Caliber
-		self.Bulletdata2.PropLength = self.BulletData.PropLength --Volume of the case as a cylinder * Powder density converted from g to kg
-		self.Bulletdata2.ProjLength = self.BulletData.ProjLength --Volume of the projectile as a cylinder * streamline factor (Data5) * density of steel
-		self.Bulletdata2.Data5 = self.BulletData.BoomFillerMass or self.BulletData.FillerMass or 0 --He Filler or Flechette count
-		self.Bulletdata2.Data6 = self.BulletData.Data6 or 55 --HEAT ConeAng or Flechette Spread
-		self.Bulletdata2.Data7 = self.BulletData.Data7
-		self.Bulletdata2.Data8 = self.BulletData.Data8
-		self.Bulletdata2.Data9 = self.BulletData.Data9
-		self.Bulletdata2.Data10 = self.BulletData.Data10 -- Tracer
-		self.Bulletdata2.Data13 = self.BulletData.Data13 or 55 --THEAT ConeAng2
-		self.Bulletdata2.Data14 = self.BulletData.Data14 or 0.05 --THEAT HE Allocation
+		self.Bulletdata2.Id = SourceData.Id or self.BulletData.Id
+		self.Bulletdata2.Caliber = SourceData.Caliber or self.BulletData.Caliber
+		self.Bulletdata2.PropLength = SourceData.PropLength or self.BulletData.PropLength --Volume of the case as a cylinder * Powder density converted from g to kg
+		self.Bulletdata2.ProjLength = SourceData.ProjLength or self.BulletData.ProjLength --Volume of the projectile as a cylinder * streamline factor (Data5) * density of steel
+		self.Bulletdata2.Data5 = SourceData.BoomFillerMass or SourceData.FillerMass or self.BulletData.BoomFillerMass or self.BulletData.FillerMass or 0 --He Filler or Flechette count
+		self.Bulletdata2.Data6 = SourceData.Data6 or self.BulletData.Data6 or 55 --HEAT ConeAng or Flechette Spread
+		self.Bulletdata2.Data7 = SourceData.Data7 or self.BulletData.Data7
+		self.Bulletdata2.Data8 = SourceData.Data8 or self.BulletData.Data8
+		self.Bulletdata2.Data9 = SourceData.Data9 or self.BulletData.Data9
+		self.Bulletdata2.Data10 = SourceData.Data10 or self.BulletData.Data10 -- Tracer
+		self.Bulletdata2.Data13 = SourceData.Data13 or self.BulletData.Data13 or 55 --THEAT ConeAng2
+		self.Bulletdata2.Data14 = SourceData.Data14 or self.BulletData.Data14 or 0.05 --THEAT HE Allocation
 
 		--print(self.BulletData.Data14)
 
@@ -1060,9 +1081,9 @@ do
 
 		--
 		self.Bulletdata2.AmmoType = self.Bulletdata2.Type
-		self.Bulletdata2.FrArea = 3.1416 * (self.BulletData.Caliber / 2) ^ 2
-		self.Bulletdata2.ProjMass = self.BulletData.FrArea * (self.BulletData.ProjLength * 7.9 / 1000)
-		self.Bulletdata2.PropMass = self.BulletData.FrArea * (self.BulletData.PropLength * ACF.PDensity / 1000) --Volume of the case as a cylinder * Powder density converted from g to kg
+		self.Bulletdata2.FrArea = 3.1416 * (self.Bulletdata2.Caliber / 2) ^ 2
+		self.Bulletdata2.ProjMass = self.Bulletdata2.FrArea * (self.Bulletdata2.ProjLength * 7.9 / 1000)
+		self.Bulletdata2.PropMass = self.Bulletdata2.FrArea * (self.Bulletdata2.PropLength * ACF.PDensity / 1000) --Volume of the case as a cylinder * Powder density converted from g to kg
 
 
 		self.Bulletdata2.FillerMass = self.Bulletdata2.Data5
@@ -1273,32 +1294,9 @@ function ENT:ACF_OnDamage( Entity, Energy, FrArea, _, Inflictor, _, _ )	--This f
 end
 
 do
-	local MissileGuidanceFactors = {
-		Dumb				= 0.3,
-		Straight_Running	= 0.45,
-		GPS					= 0.6,
-		Antimissile			= 0.6,
-		AntiRadiation		= 0.7,
-		Beam_Riding			= 0.7,
-		GPS_TerrainAvoidant = 0.8,
-		SACLOS				= 0.75,
-		Semiactive			= 0.85,
-		Wire				= 1.0,
-		Acoustic_Straight 	= 1.0,
-		Acoustic_Helical	= 1.0,
-		Laser				= 1.2,
-		Infrared			= 1.2,
-		Top_Attack_IR		= 1.5,
-		Radar				= 1.5
-	}
-
-	function CalculateMissileCost(BulletData) --Used for both the missiles on the rack and the ammo entities
-		local Pts = ACF_GetRackValue(BulletData, "pointcost") or ACF_GetGunValue(BulletData.Id, "pointcost") or 0.9
-		local Guid = BulletData.Data7 or "Dumb"
-		Pts = Pts * MissileGuidanceFactors[Guid] or 0
-		return Pts
-
+	-- Calculates per-missile points for rack/ammo entities.
+	-- ATGMs use the same performance model as gun ammo, blended with legacy pointcost for continuity.
+	function CalculateMissileCost(BulletData)
+		return ACE_CalcMissileLegacyRoundCost(BulletData)
 	end
-
-
 end

@@ -24,7 +24,7 @@ ACF_defineGun("BGM-71E ASM", {								-- id
 	gunclass		= "ATGM",
 	rack			= "1x BGM-71E",								-- Which rack to spawn this missile on?
 	length			= 123,										-- Used for the physics calculations
-	caliber			= 13,
+	caliber			= 15.2,
 	weight			= 76.4,										-- Don't scale down the weight though!
 	year			= 1970,
 	modeldiameter	= 3 * 2.54,
@@ -239,7 +239,7 @@ ACF_defineGun("AT-3 ASM", { --id
 	gunclass		= "ATGM",
 	rack			= "1xAT3RK",									-- Which rack to spawn this missile on?
 	length			= 84,										-- Used for the physics calculations
-	caliber			= 13,
+	caliber			= 12.5,
 	weight			= 12.5,										-- Don't scale down the weight though!
 	year			= 1969,
 	modeldiameter	= 3 * 2.54,
@@ -458,7 +458,7 @@ ACF_defineGun("Spike-LR ASM", {
 	gunclass		= "ATGM",
 	rack			= "1x Javelin",								-- Which rack to spawn this missile on?
 	length			= 67 * 2.53, --Convert to ammocrate units
-	caliber			= 13,										-- caliber
+	caliber			= 17,										-- Real diameter (170 mm).
 	weight			= 13,										-- Don't scale down the weight though!  --was 97.2
 	year			= 1997,										-- year
 	modeldiameter	= 7,--Already in ammocrate units
@@ -609,7 +609,7 @@ ACF_defineGun("AGM-114 ASM", {						--id
 	gunclass 		= "ATGM",
 	rack 			= "2x AGM-114",					-- Which rack to spawn this missile on?
 	length 			= 163,
-	caliber 		= 16,
+	caliber 		= 17.8,
 	weight 			= 45,							-- Don't scale down the weight though!
 	modeldiameter	= 3 * 2.54,					-- in cm
 	bodydiameter	= 8.5, -- If this ordnance has fixed fins. Add this to count the body without finds, to ensure the missile will fit properly on the rack (doesnt affect the ammo dimension)
@@ -767,6 +767,7 @@ ACF_defineGun("MGM-166", { --id
 		reloaddelay			= 30.0,
 
 		maxlength			= 1,							-- Length of missile. Used for ammo properties.
+		minprojlength		= 1,							-- Explicitly pin LOSAT's custom compact projectile layout.
 		propweight			= 0.001,						-- Motor mass - motor casing. Used for ammo properties.
 
 		armour				= 21,							-- Armour effectiveness of casing, in mm

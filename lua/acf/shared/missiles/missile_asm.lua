@@ -244,7 +244,7 @@ ACF_defineGun("KH-31 ASM", {						-- id
 	gunclass         = "ASM",
 	rack             = "1xRK",						-- Which rack to spawn this missile on?
 	length           = 185 * 2.53, --Convert to ammocrate units
-	caliber          = 35.56,
+	caliber          = 36.0,
 	weight           = 610,							-- Don't scale down the weight though!
 	year             = 1974,
 	modeldiameter    = 32, --Already in ammocrate units
@@ -387,7 +387,7 @@ ACF_defineGun("AS-30 ASM", {						-- id
 	gunclass		= "ASM",
 	rack			= "1xRK",						-- Which rack to spawn this missile on?
 	length			= 120,
-	caliber			= 34,
+	caliber			= 34.2,
 	weight			= 520,							-- Don't scale down the weight though!
 	year			= 1976,
 	modeldiameter	= 12,					-- in cm

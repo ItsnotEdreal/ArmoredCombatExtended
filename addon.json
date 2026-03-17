@@ -1,0 +1,22 @@
+{
+  "title": "[ACE] Armored Combat Extended - Canary Edition",
+  "type": "ServerContent",
+  "tags": [
+    "build",
+    "scenic",
+    "realism"
+  ],
+  "ignore": [
+    "*.gif",
+    "*.gitattributes",
+    "*.md",
+    "*.png",
+    "*.py",
+    "*.glualint.json",
+    "*.txt",
+    "*.vs",
+    ".vs/",
+    "*.sqlite",
+    "*.sqlite-journal"
+  ]
+}

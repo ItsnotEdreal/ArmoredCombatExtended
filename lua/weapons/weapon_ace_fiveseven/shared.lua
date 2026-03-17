@@ -21,7 +21,7 @@ SWEP.Primary.BulletCount = 1 --Number of bullets to fire each shot, used for sho
 
 SWEP.ReloadSound = "Weapon_Pistol.Reload" --Sound other players hear when you reload - this is NOT your first-person sound
 										--Most models have a built-in first-person reload sound
-SWEP.ReticuleSize = 20
+SWEP.ReticuleSize = 10
 SWEP.ZoomFOV = 60
 SWEP.HasScope = false --True if the weapon has a sniper-style scope
 
@@ -44,8 +44,8 @@ SWEP.RecoilSideBias = 0
 
 SWEP.ZoomRecoilBonus = 0.5 --Reduce recoil by this amount when zoomed or scoped
 SWEP.CrouchRecoilBonus = 0.5 --Reduce recoil by this amount when crouching
-SWEP.ViewPunchAmount = 0 --Degrees to punch the view upwards each shot - does not actually move crosshair, just a visual effect
-
+SWEP.ViewPunchAmount = 1 --Degrees to punch the view upwards each shot - does not actually move crosshair, just a visual effect
+SWEP.AccurateCrosshair = true
 
 --Spread (aimcone) settings--
 SWEP.BaseSpread = 0.05 --First-shot random spread, in degrees
@@ -70,7 +70,7 @@ function SWEP:InitBulletData()
 	self.BulletData.Type = "AP"
 	self.BulletData.Id = 1
 	self.BulletData.Caliber = 0.57
-	self.BulletData.PropLength = 8 --Volume of the case as a cylinder * Powder density converted from g to kg
+	self.BulletData.PropLength = 2 --Volume of the case as a cylinder * Powder density converted from g to kg
 	self.BulletData.ProjLength = 2.1 --Volume of the projectile as a cylinder * streamline factor (Data5) * density of steel
 	self.BulletData.Data5 = 0 --He Filler or Flechette count
 	self.BulletData.Data6 = 0 --HEAT ConeAng or Flechette Spread
@@ -93,7 +93,7 @@ function SWEP:InitBulletData()
 	self.BulletData.MuzzleVel = ACF_MuzzleVelocity(self.BulletData.PropMass, self.BulletData.ProjMass, self.BulletData.Caliber)
 	self.BulletData.ShovePower = 0.2
 	self.BulletData.KETransfert = 0.3
-	self.BulletData.PenArea = self.BulletData.FrArea ^ ACF.PenAreaMod * 1.2
+	self.BulletData.PenArea = self.BulletData.FrArea ^ ACF.PenAreaMod * 0.5
 	self.BulletData.Pos = Vector(0, 0, 0)
 	self.BulletData.LimitVel = 800
 	self.BulletData.Ricochet = 60

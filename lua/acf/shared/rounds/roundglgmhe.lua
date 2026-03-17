@@ -28,11 +28,12 @@ function Round.create( Gun, BulletData )
 
 	local SMul = 15 / BulletData.Caliber * BulletData.MuzzleVel / 200
 
+	local MuzzlePos = (Gun and Gun.Muzzle and Gun:LocalToWorld(Gun.Muzzle)) or (Gun and Gun:GetPos()) or Vector(0,0,0)
 	local MDat = {
 		Owner = Gun:CPPIGetOwner(),
 		Launcher = Gun,
 
-		Pos = Gun:GetAttachment(1).Pos + Gun:GetForward() * 39.37,
+		Pos = MuzzlePos,
 		Ang = Gun:GetAngles(),
 
 		Mdl = mdl,
@@ -68,7 +69,7 @@ function Round.create( Gun, BulletData )
 	local BData = table.Copy( BulletData ) --Done so we don't accidentally write to the original crate bulletdata
 	BData.BulletData = nil
 
-	BData.Type = "HE"
+	BData.Type = ACE_GetMissileWarheadType(BulletData.Type or "GLATGM-HE")
 	--BData.Id = 2	
 
 	BData.FakeCrate = ents.Create("acf_fakecrate2")

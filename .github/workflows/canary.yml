@@ -1,0 +1,25 @@
+name: Canary deployment to Workshop
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [dev]
+
+concurrency:
+  group: workshop-upload
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Upload to Workshop
+        uses: ACE-Project-Team/gmod-upload@master
+        with:
+          id: 3670751046
+          changelog: ${{ github.event.head_commit.message }}
+        env:
+          STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
+          STEAM_PASSWORD: ${{ secrets.STEAM_PASSWORD }}
