@@ -173,11 +173,11 @@ local rareNames = {
 
 local randomPrefixes = {
 	"John", "Bob", "Sam", "Joe", "Ben", "Alex", "Chris", "David", "Eric", "Frank",
-	"Antonio", "Ivan", "Alexander", "Victor", "Elon", "Vladimir", "Donald"
+	"Antonio", "Ivan", "Alexander", "Victor", "Elon", "Vladimir", "Donald", "Jeffery", "Bill", "Ehud", "Ghislaine"
 }
 local randomSuffixes = {
 	"Smith", "Johnson", "Dover", "Wang", "Kim", "Lee", "Brown", "Davis", "Evans",
-	"Garcia", "", "Russel", "King", "Musk", "Popov"
+	"Garcia", "", "Russel", "King", "Musk", "Popov", "Epstein", "Trump", "Gates", "Barak", "Maxwell"
 }
 
 function ACE_GenerateCrewName()
