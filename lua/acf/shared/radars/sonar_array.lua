@@ -17,7 +17,7 @@ ACF_DefineSonar("Tiny-Sonar", {
 	noisemul	= 1.5, --Multiplier for the noise of the sonar.
 	washoutfactor = 1.25, --Resistance to being washed out. 0.5 means washes out half as quickly. Full washout at 35 mph base.
 	maxangle = 360, --Max sonar angle of the sonar. 360 is a full circle
-	acepoints = 300
+	acepoints = 250
 } )
 
 ACF_DefineSonar("Small-Sonar", {
@@ -30,7 +30,7 @@ ACF_DefineSonar("Small-Sonar", {
 	powerscale	= 0.5,--Multiplier for the energy of the sonar. The base range of sonar is (300m,200m,100m) for an omnidirectional ping and (600m,400m,200m) for a directed ping.
 	noisemul	= 1.25, --Multiplier for the noise of the sonar.
 	washoutfactor = 1.25, --Resistance to being washed out. 0.5 means washes out half as quickly. Full washout at 35 mph base.
-	acepoints = 750
+	acepoints = 700
 } )
 
 
@@ -44,7 +44,7 @@ ACF_DefineSonar("Medium-Sonar", {
 	powerscale	= 0.75,--Multiplier for the energy of the sonar. The base range of sonar is (300m,200m,100m) for an omnidirectional ping and (600m,400m,200m) for a directed ping.
 	noisemul	= 0.85, --Multiplier for the noise of the sonar.
 	washoutfactor = 1.0, --Resistance to being washed out. 0.5 means washes out half as quickly. Full washout at 35 mph base.
-	acepoints = 2700
+	acepoints = 1800
 } )
 
 
@@ -58,5 +58,5 @@ ACF_DefineSonar("Large-Sonar", {
 	powerscale	= 1.0,--Multiplier for the energy of the sonar. The base range of sonar is (300m,200m,100m) for an omnidirectional ping and (600m,400m,200m) for a directed ping.
 	noisemul	= 1.0, --Multiplier for the noise of the sonar. Less accurate than the medium because of the sheer amount of power involved and inferior technology.
 	washoutfactor = 0.8, --Resistance to being washed out. 0.5 means washes out half as quickly. Full washout at 35 mph base.
-	acepoints = 3000
+	acepoints = 2800
 } )

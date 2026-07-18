@@ -326,8 +326,8 @@ function PANEL:Init( )
 	end
 	do
 	--[[==================================================
-                        Tools folder
-    ]]--==================================================
+						Tools folder
+	]]--==================================================
 
 	local toolsNode	= HomeNode:AddNode("Tools" , "icon16/plugin.png") --Tools folder name
 
@@ -339,6 +339,42 @@ function PANEL:Init( )
 			end
 		end
 
+	end
+	do
+	--[[==================================================
+						Crew folder
+	]]--==================================================
+
+		local CrewNode = HomeNode:AddNode("Crew", "icon16/user.png")
+
+		CrewNode.mytable = {
+			-- IMPORTANT: default to a valid crewseat so left-click spawns something even if user doesn't touch UI
+			type = "Crewseats",
+			id = "Crewseat_Driver",
+			guicreate = function(_, Table) ACFCrewMenuGUICreate(Table) end,
+			guiupdate = function() return end
+		}
+
+		function CrewNode:DoClick()
+			acfmenupanel:UpdateDisplay(self.mytable)
+		end
+	end
+	do
+	--[[==================================================
+						Extras folder
+	]]--==================================================
+
+		local extrasNode = HomeNode:AddNode("Extras", "icon16/bricks.png")
+
+		for _, ExtrasData in pairs(FinalContainer["Extras"] or {}) do
+			local ItemNode = extrasNode:AddNode(ExtrasData.name or "No Name", ItemIcon2)
+			ItemNode.mytable = ExtrasData
+
+			function ItemNode:DoClick()
+				RunConsoleCommand("acfmenu_type", self.mytable.type)
+				acfmenupanel:UpdateDisplay(self.mytable)
+			end
+		end
 	end
 	do
 
@@ -576,7 +612,7 @@ function ACFChangelogHTTPCallBack(contents)
 
 end
 
-http.Fetch("http://raw.github.com/RedDeadlyCreeper/ArmoredCombatExtended/master/changelog.txt", ACFChangelogHTTPCallBack, function() end)
+http.Fetch("http://raw.github.com/ACE-Project-Team/ArmoredCombatExtended/master/changelog.txt", ACFChangelogHTTPCallBack, function() end)
 
 --[[=========================
 	Clientside folder content
@@ -626,7 +662,7 @@ function ACFCLGUICreate()
 	DupeSection:SetName("Dupe Loader")
 
 	DupeSection:Help( "If for some reason, your ace dupe folder was damaged or deleted, you can restore them here." )
-	DupeSection:Button("Restore ace dupe folders", "acf_dupes_remount" )
+	DupeSection:Button("Restore ace dupe folders", "ace_dupes_remount" )
 
 	acfmenupanel.CustomDisplay:AddItem( DupeSection )
 
@@ -774,7 +810,7 @@ function ContactGUICreate()
 	Wiki:SetPos(0,0)
 	Wiki:SetSize(250,30)
 	Wiki.DoClick = function()
-	gui.OpenURL("https://github.com/RedDeadlyCreeper/ArmoredCombatExtended/wiki")
+	gui.OpenURL("https://github.com/ACE-Project-Team/ArmoredCombatExtended/wiki")
 	end
 	acfmenupanel.CustomDisplay:AddItem( Wiki )
 
@@ -1083,8 +1119,9 @@ do
 
 	end
 
-	acfmenupanel.CData.CaliberSelect.OnSelect = function( _ , _ , data )
-		acfmenupanel.AmmoData["Data"] = acfmenupanel.WeaponData["Guns"][data]["round"]
+	acfmenupanel.CData.CaliberSelect.OnSelect = function( _ , _ , gun )
+
+		acfmenupanel.AmmoData["Data"] = ACFEnts["Guns"][gun]["round"]
 		MainPanel:UpdateAttribs()
 		MainPanel:UpdateAttribs() --Note : this is intentional
 
@@ -1237,6 +1274,252 @@ function PANEL:CPanelText(Name, Desc, Font, Panel)
 
 end
 
-net.Receive( "colorchatmessage", function( _, _ ) --Wooo colored chat
-	chat.AddText( net.ReadColor(), net.ReadString() )
-end )
+--[[=========================
+	Crew unified menu GUI
+	NOTE: Added for the "single Crew menu" workflow:
+	- Clicking "Crew" opens this panel
+	- Role + Pose are selected here
+	- Spawning still uses the 3 existing entities (Driver/Gunner/Loader), so no builds/dupes break.
+]]--=========================
+function ACFCrewMenuGUICreate(Table)
+	-- Enable scrolling for this page
+	if acfmenupanel.CustomDisplay and acfmenupanel.CustomDisplay.EnableVerticalScrollbar then
+		acfmenupanel.CustomDisplay:EnableVerticalScrollbar(true)
+	end
+
+	local CrewDefs = (ACF and ACF.Weapons and ACF.Weapons.Crewseats) or {}
+	if table.IsEmpty(CrewDefs) then
+		acfmenupanel:CPanelText("CrewMissing", "No crewseat definitions loaded (ACF.Weapons.Crewseats is empty).")
+		acfmenupanel.CustomDisplay:PerformLayout()
+		return
+	end
+
+	local RoleToId = {
+		Driver = "Crewseat_Driver",
+		Gunner = "Crewseat_Gunner",
+		Loader = "Crewseat_Loader",
+	}
+
+	local function GetRoleFromId(id)
+		if id == RoleToId.Gunner then return "Gunner" end
+		if id == RoleToId.Loader then return "Loader" end
+		return "Driver"
+	end
+
+	local function GetDefaultPoseForId(id)
+		local def = CrewDefs[id]
+		return (def and def.defaultModel) or "Sitting"
+	end
+
+	local function GetModelFor(id, pose)
+		local def = CrewDefs[id]
+		if not def then return nil end
+
+		if ACE and ACE.CrewseatModels and pose and ACE.CrewseatModels[pose] then
+			return ACE.CrewseatModels[pose]
+		end
+
+		return def.model
+	end
+
+	-- Camera presets per pose type
+	local CameraPresets = {
+		-- Standing poses
+		Standing = {
+			pos = Vector(207, 207, 98),
+			lookat = Vector(0, 0, 40),
+			fov = 18
+		},
+		-- Sitting poses
+		Sitting = {
+			pos = Vector(138, 138, 58),
+			lookat = Vector(0, 0, 20),
+			fov = 20
+		},
+	}
+
+	-- Default fallback
+	CameraPresets.Default = CameraPresets.Sitting
+
+	local function GetCameraForPose(poseName)
+		-- Check if it's a standing pose
+		if ACE_IsStandingPose and ACE_IsStandingPose(poseName) then
+			return CameraPresets.Standing
+		end
+
+		-- Manual check if function doesn't exist
+		if poseName and string.find(string.lower(poseName), "stand") then
+			return CameraPresets.Standing
+		end
+
+		return CameraPresets.Sitting
+	end
+
+	RunConsoleCommand("acfmenu_type", "Crewseats")
+
+	local currentId = (Table and Table.id) or RoleToId.Driver
+	if not CrewDefs[currentId] then currentId = RoleToId.Driver end
+
+	local currentPose = GetDefaultPoseForId(currentId)
+
+	RunConsoleCommand("acfmenu_id", currentId)
+	RunConsoleCommand("acfmenu_entitydata", currentPose)
+
+	-- Header
+	acfmenupanel:CPanelText("Crew_Title", "Crew", "DermaDefaultBold")
+
+	-- Role dropdown
+	acfmenupanel:CPanelText("Crew_RoleLabel", "\nRole:")
+
+	local RoleSelect = vgui.Create("DComboBox", acfmenupanel.CustomDisplay)
+	RoleSelect:SetSize(acfmenupanel.CustomDisplay:GetWide(), 30)
+	RoleSelect:AddChoice("Driver")
+	RoleSelect:AddChoice("Gunner")
+	RoleSelect:AddChoice("Loader")
+	RoleSelect:SetValue(GetRoleFromId(currentId))
+	acfmenupanel.CustomDisplay:AddItem(RoleSelect)
+
+	-- Pose dropdown
+	acfmenupanel:CPanelText("Crew_PoseLabel", "\nPose Model:")
+
+	local PoseSelect = vgui.Create("DComboBox", acfmenupanel.CustomDisplay)
+	PoseSelect:SetSize(acfmenupanel.CustomDisplay:GetWide(), 30)
+
+	if ACE and ACE.CrewseatModelList then
+		for _, modelName in ipairs(ACE.CrewseatModelList) do
+			PoseSelect:AddChoice(modelName, modelName)
+		end
+	end
+
+	PoseSelect:SetValue(currentPose)
+	acfmenupanel.CustomDisplay:AddItem(PoseSelect)
+
+	-- Model preview
+	local DisplayModel = vgui.Create("DModelPanel", acfmenupanel.CustomDisplay)
+	DisplayModel:SetSize(acfmenupanel.CustomDisplay:GetWide(), acfmenupanel.CustomDisplay:GetWide() * 0.75)
+	DisplayModel.LayoutEntity = function() end
+	acfmenupanel.CustomDisplay:AddItem(DisplayModel)
+
+	-- Description label
+	local DescLabel = vgui.Create("DLabel")
+	DescLabel:SetDark(true)
+	DescLabel:SetWrap(true)
+	DescLabel:SetAutoStretchVertical(true)
+	DescLabel:SetText("")
+	DescLabel:SetSize(acfmenupanel.CustomDisplay:GetWide() - 10, 20)
+	DescLabel:SetContentAlignment(7)
+	acfmenupanel.CustomDisplay:AddItem(DescLabel)
+
+	-- Spacer
+	local Spacer = vgui.Create("DPanel")
+	Spacer:SetSize(acfmenupanel.CustomDisplay:GetWide(), 8)
+	Spacer:SetPaintBackground(false)
+	acfmenupanel.CustomDisplay:AddItem(Spacer)
+
+	-- Weight label
+	local WeightLabel = vgui.Create("DLabel")
+	WeightLabel:SetDark(true)
+	WeightLabel:SetText("")
+	WeightLabel:SetSize(acfmenupanel.CustomDisplay:GetWide(), 20)
+	acfmenupanel.CustomDisplay:AddItem(WeightLabel)
+
+	local function Refresh()
+		local def = CrewDefs[currentId]
+		if not def then return end
+
+		local mdl = GetModelFor(currentId, currentPose) or def.model
+		if mdl then
+			DisplayModel:SetModel(mdl)
+
+			-- Apply pose-specific camera settings
+			local cam = GetCameraForPose(currentPose)
+			DisplayModel:SetCamPos(cam.pos)
+			DisplayModel:SetLookAt(cam.lookat)
+			DisplayModel:SetFOV(cam.fov)
+		end
+
+		DescLabel:SetText(def.desc or "")
+		DescLabel:SizeToContentsY()
+
+		if def.weight then
+			WeightLabel:SetText("Weight: " .. tostring(def.weight) .. " kg")
+		else
+			WeightLabel:SetText("")
+		end
+		WeightLabel:SizeToContentsY()
+	end
+
+	Refresh()
+
+	RoleSelect.OnSelect = function(_, _, roleName)
+		currentId = RoleToId[roleName] or RoleToId.Driver
+		if not CrewDefs[currentId] then currentId = RoleToId.Driver end
+
+		currentPose = GetDefaultPoseForId(currentId)
+
+		RunConsoleCommand("acfmenu_id", currentId)
+		RunConsoleCommand("acfmenu_entitydata", currentPose)
+
+		PoseSelect:SetValue(currentPose)
+		Refresh()
+	end
+
+	PoseSelect.OnSelect = function(_, _, poseName)
+		currentPose = poseName or "Sitting"
+		RunConsoleCommand("acfmenu_entitydata", currentPose)
+		Refresh()
+	end
+
+	acfmenupanel.CustomDisplay:PerformLayout()
+end
+
+--[[=========================
+	Extras GUI (Wind Sensor, G-Force Meter, etc.)
+]]--=========================
+function ACEExtrasGUICreate(Table)
+	acfmenupanel:CPanelText("Name", Table.name, "DermaDefaultBold")
+
+	if Table.model then
+		acfmenupanel.CData.DisplayModel = vgui.Create("DModelPanel", acfmenupanel.CustomDisplay)
+		acfmenupanel.CData.DisplayModel:SetModel(Table.model)
+
+		-- Adjust camera based on entity type
+		if Table.ent == "ace_gforce_meter" then
+			acfmenupanel.CData.DisplayModel:SetCamPos(Vector(25, 25, 15))
+			acfmenupanel.CData.DisplayModel:SetLookAt(Vector(0, 0, 5))
+			acfmenupanel.CData.DisplayModel:SetFOV(50)
+		elseif Table.ent == "ace_wind_sensor" then
+			acfmenupanel.CData.DisplayModel:SetCamPos(Vector(50, 50, 25))
+			acfmenupanel.CData.DisplayModel:SetLookAt(Vector(0, 0, 5))
+			acfmenupanel.CData.DisplayModel:SetFOV(35)
+		else
+			acfmenupanel.CData.DisplayModel:SetCamPos(Vector(50, 50, 40))
+			acfmenupanel.CData.DisplayModel:SetLookAt(Vector(0, 0, 10))
+			acfmenupanel.CData.DisplayModel:SetFOV(35)
+		end
+
+		acfmenupanel.CData.DisplayModel:SetSize(acfmenupanel:GetWide(), acfmenupanel:GetWide() * 0.5)
+		acfmenupanel.CData.DisplayModel.LayoutEntity = function() end
+		acfmenupanel.CustomDisplay:AddItem(acfmenupanel.CData.DisplayModel)
+	end
+
+	-- Clear entity data for non-crew entities
+	RunConsoleCommand("acfmenu_entitydata", "")
+
+	acfmenupanel:CPanelText("Desc", "\n" .. Table.desc)
+
+	if Table.weight then
+		acfmenupanel:CPanelText("Weight", "\nWeight: " .. Table.weight .. " kg")
+	end
+
+	acfmenupanel.CustomDisplay:PerformLayout()
+end
+
+if not ACF then ACF = {} end
+if not ACF.ChatMessageReceiver then
+	ACF.ChatMessageReceiver = true
+	net.Receive( "colorchatmessage", function( _, _ ) --Wooo colored chat
+		chat.AddText( net.ReadColor(), net.ReadString() )
+	end )
+end
+

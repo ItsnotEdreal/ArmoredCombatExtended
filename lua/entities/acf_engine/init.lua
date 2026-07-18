@@ -137,7 +137,7 @@ do
 		}
 		local PtsPerHP = 2.33 / 1.5 --Added 1.5 mul from torque boost antics for any engines without a defined hp cost.
 		local FallBackCost = (Engine.peakkw / 0.7457) * PtsPerHP * (FuelCostMul[Engine.FuelType] or 1)
-		Engine.ACEPoints		= math.ceil((Lookup.acepoints or FallBackCost or 0.404) * ACE.EnginePointMul)
+		Engine.ACEPoints		= math.ceil((Lookup.acepoints or FallBackCost or 0.404) * ACE.EnginePointCostMultiplier)
 
 		Engine.TorqueScale	= ACF.TorqueScale[Engine.EngineType]
 
@@ -233,7 +233,15 @@ function ENT:Update( ArgsTable )
 	self.SpecialDamage     = true
 	self.TorqueMult        = self.TorqueMult or 1
 	self.FuelTank          = 0
-	self.ACEPoints			= Lookup.acepoints or 404
+	local FuelCostMul = {
+		Petrol			= 1.0,
+		Diesel			= 1.2, --Due to generally higher torques
+		Multifuel		= 1.2, --Due to generally higher torques
+		Electric		= 0.8 --Due to odd power outputs
+	}
+	local PtsPerHP = 2.33 / 1.5 --Added 1.5 mul from torque boost antics for any engines without a defined hp cost.
+	local FallBackCost = (self.peakkw / 0.7457) * PtsPerHP * (FuelCostMul[self.FuelType] or 1)
+	self.ACEPoints			= math.ceil((Lookup.acepoints or FallBackCost or 0.404) * ACE.EnginePointCostMultiplier)
 
 	self.TorqueScale		= ACF.TorqueScale[self.EngineType]
 
@@ -302,7 +310,7 @@ function ENT:FindSeatForDriver()
 	local closestDist = math.huge
 	local SeatEnt = nil
 
-	local EngContraption = self:GetContraption()
+	local EngContraption = self:CFW_GetContraption()
 
 	for _, ent in pairs( ACE.critEnts ) do
 
@@ -317,7 +325,7 @@ function ENT:FindSeatForDriver()
 
 		if SqDist > MaxDist then continue end --Outside link range. Continue.
 
-		if EngContraption ~= ent:GetContraption() then continue end --Seatent isn't on the same contraption as the engine. Ignore it.
+		if EngContraption ~= ent:CFW_GetContraption() then continue end --Seatent isn't on the same contraption as the engine. Ignore it.
 
 		if SqDist < closestDist then
 			SeatEnt = ent

@@ -46,6 +46,8 @@ local AllowedEnts = {
 	["ace_searchradar"]           = true,
 	["ace_irst"]                  = true,
 	["ace_vheat_source"]          = true,
+	["ace_gforce_meter"]          = true,
+	["ace_wind_sensor"]           = true,
 	["acf_gun"]                   = true,
 	["acf_ammo"]                  = true,
 	["acf_engine"]                = true,
@@ -316,4 +318,25 @@ end
 
 timer.Create( "PeriodicCleanup", 3, 0, ACE_refreshdata )
 
-hook.Add("AdvDupe_FinishPasting", "ACE_refresh", ACE_refreshdata)
+hook.Add("AdvDupe_FinishPasting", "ACE_refresh", function(dupeInfo)
+	local dupe = istable(dupeInfo) and dupeInfo[1]
+	local created = dupe and dupe.CreatedEntities
+	if not created then return end
+
+	local flagName = "_ACEAdvDupeRefresh"
+	local first
+	for _, ent in pairs(created) do
+		if IsValid(ent) then
+			first = ent
+			break
+		end
+	end
+	if not first or first[flagName] then return end
+	for _, ent in pairs(created) do
+		if IsValid(ent) then
+			ent[flagName] = true
+		end
+	end
+
+	ACE_refreshdata(dupeInfo)
+end)

@@ -16,7 +16,7 @@ ACF_DefineRadar("SmallDIR-AM", {
 	class		= "DIR-AM",
 	weight		= 50,
 	viewcone	= 45, -- half of the total cone.  'viewcone = 30' means 60 degs total viewcone.
-	acepoints = 50
+	acepoints = 120
 } )
 
 
@@ -28,7 +28,7 @@ ACF_DefineRadar("MediumDIR-AM", {
 	class		= "DIR-AM",
 	weight		= 200,
 	viewcone	= 60, -- half of the total cone.  'viewcone = 30' means 60 degs total viewcone.
-	acepoints = 100
+	acepoints = 200
 } )
 
 
@@ -40,5 +40,5 @@ ACF_DefineRadar("LargeDIR-AM", {
 	class		= "DIR-AM",
 	weight		= 300,
 	viewcone	= 90, -- half of the total cone.  'viewcone = 30' means 60 degs total viewcone.
-	acepoints = 175
+	acepoints = 280
 } )

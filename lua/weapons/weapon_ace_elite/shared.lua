@@ -21,7 +21,7 @@ SWEP.Primary.BulletCount = 1 --Number of bullets to fire each shot, used for sho
 
 SWEP.ReloadSound = "Weapon_Pistol.Reload" --Sound other players hear when you reload - this is NOT your first-person sound
 										--Most models have a built-in first-person reload sound
-SWEP.ReticuleSize = 15
+SWEP.ReticuleSize = 10
 SWEP.ZoomFOV = 60
 SWEP.HasScope = false --True if the weapon has a sniper-style scope
 
@@ -31,12 +31,12 @@ SWEP.HasScope = false --True if the weapon has a sniper-style scope
 --SWEP.HeatReductionRate = 75 --Heat loss per second when not firing
 --SWEP.HeatReductionDelay = 0.3 --Delay after firing before beginning to reduce heat
 SWEP.HeatReductionRate = 200 --Heat loss per second when not firing
-SWEP.HeatPerShot = 7 --Heat generated per shot
-SWEP.HeatMax = 15 --Maximum heat - determines max rate at which recoil is applied to eye angles
+SWEP.HeatPerShot = 15 --Heat generated per shot
+SWEP.HeatMax = 30 --Maximum heat - determines max rate at which recoil is applied to eye angles
 				--Also determines point at which random spread is at its highest intensity
 				--HeatMax divided by HeatPerShot gives you how many shots until you reach MaxSpread
 
-SWEP.AngularRecoil = 20	--Amount of angular recoil
+SWEP.AngularRecoil = 30	--Amount of angular recoil
 
 --How much the recoil is biased to one side proportional to vertical recoil
 --Positive numbers bias to the right, negative to the left
@@ -44,8 +44,8 @@ SWEP.RecoilSideBias = 0
 
 SWEP.ZoomRecoilBonus = 0.5 --Reduce recoil by this amount when zoomed or scoped
 SWEP.CrouchRecoilBonus = 0.5 --Reduce recoil by this amount when crouching
-SWEP.ViewPunchAmount = 0.2 --Degrees to punch the view upwards each shot - does not actually move crosshair, just a visual effect
-
+SWEP.ViewPunchAmount = 1 --Degrees to punch the view upwards each shot - does not actually move crosshair, just a visual effect
+SWEP.AccurateCrosshair = true
 
 --Spread (aimcone) settings--
 SWEP.BaseSpread = 0.45 --First-shot random spread, in degrees
@@ -93,7 +93,7 @@ function SWEP:InitBulletData()
 	self.BulletData.MuzzleVel = ACF_MuzzleVelocity(self.BulletData.PropMass, self.BulletData.ProjMass, self.BulletData.Caliber)
 	self.BulletData.ShovePower = 0.2
 	self.BulletData.KETransfert = 0.3
-	self.BulletData.PenArea = self.BulletData.FrArea ^ ACF.PenAreaMod * 0.45
+	self.BulletData.PenArea = self.BulletData.FrArea ^ ACF.PenAreaMod * 0.5
 	self.BulletData.Pos = Vector(0, 0, 0)
 	self.BulletData.LimitVel = 800
 	self.BulletData.Ricochet = 60

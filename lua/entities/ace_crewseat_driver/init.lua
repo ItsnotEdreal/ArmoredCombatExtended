@@ -3,113 +3,114 @@ AddCSLuaFile("shared.lua")
 
 include("shared.lua")
 
-local acos, deg, remap, clamp = math.acos, math.deg, math.Remap, math.Clamp
-local round, ceil, random = math.Round, math.ceil, math.random
+local round, ceil = math.Round, math.ceil
 
-function ENT:SpawnFunction( _, trace )
+local CrewseatTable = ACF.Weapons.Crewseats
 
-	if not trace.Hit then return end
+function ENT:Initialize()
+	ACE_InitializeCrewseat(self, self.ModelType)
 
-	local SPos = (trace.HitPos + Vector(0,0,1))
+	self.LinkedEngine = nil
+	self.ACEPoints = 1
 
-	local ent = ents.Create( "ace_crewseat_driver" )
-	ent:SetPos( SPos )
+	self.Inputs = WireLib.CreateInputs(self, {})
+
+	self.Outputs = WireLib.CreateOutputs(self, {
+		"Health (Current health percentage)",
+		"IsLinked (1 if linked to an engine)",
+		"Name (Crew member name) [STRING]",
+	})
+
+	self:UpdateWireOutputs()
+end
+
+function MakeACE_Crewseat_Driver(Owner, Pos, Angle, Id, EntityData)
+	if not IsValid(Owner) then return false end
+	if not Owner:CheckLimit("_ace_crewseat") then return false end
+
+	Id = Id or "Crewseat_Driver"
+
+	local entData = CrewseatTable and CrewseatTable[Id]
+	if not entData then return false end
+
+	local ent = ents.Create("ace_crewseat_driver")
+	if not IsValid(ent) then return false end
+
+	ent:SetAngles(Angle)
+	ent:SetPos(Pos)
+
+	ent.CrewseatData = entData
+
+	local modelType = EntityData
+	if not modelType or modelType == "" then
+		modelType = entData.defaultModel or "Sitting"
+	end
+	ent.ModelType = modelType
+	ent.ACE_DupeSpawnModelType = modelType
+	ent.ACE_DupeSpawnModel = ACE.CrewseatModels and ACE.CrewseatModels[modelType] or nil
+
 	ent:Spawn()
-	ent:Activate()
+	ent:CPPISetOwner(Owner)
+
+	ent.Id = Id
+
+	Owner:AddCount("_ace_crewseat", ent)
+	Owner:AddCleanup("acfmenu", ent)
 
 	return ent
 end
 
-function ENT:Initialize()
+list.Set("ACFCvars", "ace_crewseat_driver", {"id", "entitydata"})
+duplicator.RegisterEntityClass("ace_crewseat_driver", MakeACE_Crewseat_Driver, "Pos", "Angle", "Id", "ModelType")
 
-	if self:GetModel() == "models/vehicles/pilot_seat.mdl" then
-		self:SetPos(self:LocalToWorld(Vector(0, 15.3, -14)))
-	end
-	self:SetModel( "models/chairs_playerstart/sitpose.mdl" )
-	self:SetMoveType(MOVETYPE_VPHYSICS);
-	self:PhysicsInit(SOLID_VPHYSICS);
-	self:SetUseType(SIMPLE_USE);
-	self:SetSolid(SOLID_VPHYSICS);
-	self:GetPhysicsObject():SetMass(60)
-
-	self.Master = {}
-	self.ACF = {}
-	self.ACF.Health = 1
-	self.ACF.MaxHealth = 1
-	self.Name = "Crew Seat"
-	self.Weight = 60
-	self.AnglePenalty = 0
-	self.LinkedEngine = nil
-	self.Sound = "npc/combine_soldier/die" .. tostring(random(1, 3)) .. ".wav"
-	self.SoundPitch = 100
-
-	--if not IsValid(self:CPPIGetOwner()) then
-	--	self:CPPISetOwner(game.GetWorld())
-	--end
-
-	self.NextLegalCheck	= ACF.CurTime + random(ACF.Legal.Min, ACF.Legal.Max) -- give any spawning issues time to iron themselves out
-	self.Legal = true
-	self.LegalIssues = ""
-	self.ACEPoints = 1
-
-	self.SpecialHealth	= false  --If true needs a special ACF_Activate function
-	self.SpecialDamage	= true  --If true needs a special ACF_OnDamage function
-
-	local rareNames = {"Mr.Marty", "RDC", "Cheezus", "KemGus", "Golem Man", "Arend", "Mac", "Firstgamerable", "kerbal cadet", "Psycho Dog", "Ferv", "Rice", "spEAM"}
-
-	local randomNum = random(1, 100)
-
-	if randomNum <= 2 then
-		self.Name  = rareNames[random(1, #rareNames)]
-	else
-		local randomPrefixes = {"John", "Bob", "Sam", "Joe", "Ben", "Alex", "Chris", "David", "Eric", "Frank", "Antonio", "Ivan", "Alexander", "Victor", "Elon", "Vladimir"}
-		local randomSuffixes = {"Smith", "Johnson", "Dover", "Wang", "Kim", "Lee", "Brown", "Davis", "Evans", "Garcia", "", "Russel", "King", "Musk", "Popov"}
-
-		local randomPrefix = randomPrefixes[random(1, #randomPrefixes)]
-		local randomSuffix = randomSuffixes[random(1, #randomSuffixes)]
-
-		self.Name  = randomPrefix .. " " .. randomSuffix
-	end
+function ENT:GetPoseModifiers()
+	return ACE_GetPoseModifiers(self) or { gforce = 1, tilt = 1 }
 end
 
-
-local startPenalty = 45
-local maxPenalty = 90
-
 function ENT:Think()
-	local curSeatAngle = deg(acos(self:GetUp():Dot(Vector(0, 0, 1))))
-	self.AnglePenalty = clamp(remap(curSeatAngle, startPenalty, maxPenalty, 0, 1), 0, 1)
-
-	if ACF.CurTime > self.NextLegalCheck then
-
-		self.Legal, self.LegalIssues = ACF_CheckLegal(self, self.Model, round(self.Weight, 2), nil, true, true)
-		self.NextLegalCheck = ACF.Legal.NextCheck(self.legal)
-
-	end
+	ACE_UpdateCrewseatAnglePenalty(self)
+	ACE_CrewseatLegalCheck(self)
 
 	local eng = self.LinkedEngine
 	if not self.Legal and IsValid(eng) then
 		eng:Unlink(self)
 	end
 
+	self:UpdateWireOutputs()
 	self:UpdateOverlayText()
 end
 
-
 function ENT:OnRemove()
+	ACE_CrewseatOnRemove(self)
+end
 
-	for Key in pairs(self.Master) do
-		if self.Master[Key] and self.Master[Key]:IsValid() then
-			self.Master[Key]:Unlink( self )
-		end
-	end
+function ENT:UpdateWireOutputs()
+	local hp = round(self.ACF.Health / self.ACF.MaxHealth * 100)
+	local isLinked = IsValid(self.LinkedEngine) and 1 or 0
 
+	WireLib.TriggerOutput(self, "Health", hp)
+	WireLib.TriggerOutput(self, "IsLinked", isLinked)
+	WireLib.TriggerOutput(self, "Name", self.Name or "Unknown")
 end
 
 function ENT:UpdateOverlayText()
 	local hp = round(self.ACF.Health / self.ACF.MaxHealth * 100)
+	local pose = self:GetPoseModifiers()
+	local isStanding = ACE_IsStandingPose(self.ModelType)
 
-	local str = string.format("Health: %s%%\nName: %s", hp, self.Name)
+	local str = self.Name
+	str = str .. "\n\nHealth: " .. hp .. "%"
+	str = str .. "\nPose: " .. (isStanding and "Standing" or "Sitting")
+
+	if pose.desc then
+		str = str .. "\n  " .. pose.desc
+	end
+
+	-- Only show tilt penalty if significant
+	local tiltPenalty = (self.AnglePenalty or 0) * (pose.tilt or 1)
+	if tiltPenalty > 0.1 then
+		str = str .. "\n\nTilt Penalty: " .. round(tiltPenalty * 100) .. "%"
+	end
 
 	if not self.Legal then
 		str = str .. "\n\nNot legal, disabled for " .. ceil(self.NextLegalCheck - ACF.CurTime) .. "s\nIssues: " .. self.LegalIssues
@@ -118,30 +119,37 @@ function ENT:UpdateOverlayText()
 	self:SetOverlayText(str)
 end
 
-
-function ENT:ACF_OnDamage( Entity, Energy, FrArea, _, Inflictor, _, _ )	--This function needs to return HitRes
-	self.ACF.Armour = 3
-	local HitRes	= ACF_PropDamage( Entity, Energy , FrArea, 0, Inflictor ) --Calling the standard damage prop function. Angle of incidence set to 0 for more consistent damage.
-
-	--print(math.Round(HitRes.Damage * 100))
-	--print(HitRes.Loss * 100)
-
-	--print(HitRes.Overkill)
-
-	if HitRes.Kill or HitRes.Overkill > 1 then
-
-		self:ConsumeCrewseats()
-
-		return { Damage = 0, Overkill = 0, Loss = 0, Kill = false }
-
-	end
-
-	return HitRes --This function needs to return HitRes
-
+function ENT:BuildDupeInfo()
+	local info = self.BaseClass.BuildDupeInfo(self) or {}
+	info.ModelType = self.ModelType
+	info.Model = self.Model
+	return info
 end
 
-function ENT:ConsumeCrewseats() --So we died I guess. Find another poor schmuck to takeover
+function ENT:ApplyDupeInfo(ply, ent, info, GetEntByID)
+	self.BaseClass.ApplyDupeInfo(self, ply, ent, info, GetEntByID)
 
+	local class = self:GetClass()
+	local defaultModelType = (ACE.CrewseatDefaults and ACE.CrewseatDefaults[class]) or "Sitting"
+
+	ACE_CrewseatDebugLog(self, "ApplyDupeInfoStart", info, "model=" .. tostring(self:GetModel()))
+	local modelType, _, reason = ACE_CrewseatApplyDupeModel(self, info, defaultModelType, false)
+	ACE_CrewseatDebugLog(self, "ApplyDupeInfoEnd", info, "resolved=" .. tostring(modelType) .. " reason=" .. tostring(reason))
+	ACE_CrewseatDeferredModelSync(self, info)
+end
+
+function ENT:ACF_OnDamage(Entity, Energy, FrArea, _, Inflictor, _, _)
+	local HitRes = ACE_CrewseatDamage(self, Entity, Energy, FrArea, Inflictor)
+
+	if HitRes.Kill or HitRes.Overkill > 1 then
+		self:ConsumeCrewseats()
+		return { Damage = 0, Overkill = 0, Loss = 0, Kill = false }
+	end
+
+	return HitRes
+end
+
+function ENT:ConsumeCrewseats()
 	EmitSound(self.Sound, self:GetPos(), 50, CHAN_AUTO, 1, 75, 0, self.SoundPitch)
 
 	self.Legal = false
@@ -150,78 +158,75 @@ function ENT:ConsumeCrewseats() --So we died I guess. Find another poor schmuck 
 	self:SetNoDraw( true )
 	self:SetNotSolid( true )
 
-	for _, Link in pairs( self.Master ) do	--Unlink itself
+	-- Store engine active states BEFORE marking driver as dead
+	self.PreviousEngineStates = {}
+
+	for _, Link in pairs( self.Master ) do
 		if IsValid( Link ) then
+			self.PreviousEngineStates[Link] = Link.Active  -- Save state
 			Link.HasDriver = false
 		end
 	end
 
 	local ReplaceSeat = false
-
 	local ClosestDist = math.huge
 
 	if next(ACE.Crewseats) then
 		local ReplaceEnt = nil
 		for _, SeatEnt in pairs(ACE.Crewseats) do
 
-			if not IsValid(SeatEnt) then
-				continue
-			end
-
-			if SeatEnt:CPPIGetOwner() ~= self:CPPIGetOwner() then
-				continue
-			end
+			if not IsValid(SeatEnt) then continue end
+			if SeatEnt:CPPIGetOwner() ~= self:CPPIGetOwner() then continue end
 
 			local Eclass = SeatEnt:GetClass()
-			if Eclass ~= "ace_crewseat_loader" then
-				continue
-			end
-			--Range: 20m or 790. 624100 is squared.
+			if Eclass ~= "ace_crewseat_loader" then continue end
+
 			local sqDist = SeatEnt:GetPos():DistToSqr(self:GetPos())
 			if sqDist < 624100 and (sqDist < ClosestDist) then
-					ClosestDist = sqDist
-					ReplaceEnt = SeatEnt
+				ClosestDist = sqDist
+				ReplaceEnt = SeatEnt
 			end
 		end
 
 		if IsValid(ReplaceEnt) then
-			ReplaceSeat = true --You just got promoted bud.
+			ReplaceSeat = true
 			self.Name = ReplaceEnt.Name
-			ACF_HEKill( ReplaceEnt, VectorRand() , 0)
-			--print("Found one...")
-			--debugoverlay.Cross(SeatEnt:GetPos(), 10, 10, Color(255,100,0), true)
+			ACF_HEKill( ReplaceEnt, VectorRand(), 0)
 		end
 	end
 
 	if ReplaceSeat then
-		local ReplaceTime = 5 + math.sqrt( ClosestDist ) / 39.37 * 1 --5 seconds plus 1 second per meter
+		local ReplaceTime = 5 + math.sqrt( ClosestDist ) / 39.37 * 1
 
-		timer.Create( "CrewDie" .. self:GetCreationID(), ReplaceTime, 1, function() if IsValid(self) then self:ResetLinks() end end )
-
+		timer.Create( "CrewDie" .. self:GetCreationID(), ReplaceTime, 1, function()
+			if IsValid(self) then self:ResetLinks() end
+		end)
 	else
-		ACF_HEKill( self, VectorRand() , 0)
+		ACF_HEKill( self, VectorRand(), 0)
 	end
 
-
 	return ReplaceSeat
-
 end
 
 function ENT:ResetLinks()
-
 	self.ACF.Health = self.ACF.MaxHealth or 1
 	self.ACF.Armour = self.ACF.MaxArmour or 1
 	self.NextLegalCheck = 0
 	self:SetNoDraw( false )
 	self:SetNotSolid( false )
 
-	for _, Link in pairs( self.Master ) do				--First clean the table of any invalid entities
+	for _, Link in pairs( self.Master ) do
 		if IsValid( Link ) then
 			table.insert( Link.CrewLink, self )
 			Link.HasDriver = true
 
-			--Need to think of a better workaround. Shooting someone's driver activates their engine?
-			Link:TriggerInput("Active",1) -- disable if not legal and active
+			-- Only restore engine to active if it was previously active
+			if self.PreviousEngineStates and self.PreviousEngineStates[Link] then
+				Link:TriggerInput("Active", 1)
+			end
 		end
 	end
+
+	-- Clean up saved states
+	self.PreviousEngineStates = nil
 end

@@ -90,7 +90,7 @@ end
 
 local function getMapFilename()
 
-	local mapname = string.gsub(game.GetMap(), "[ ^ %a%d-_]", "_")
+	local mapname = string.gsub(game.GetMap(), "[^%a%d-_]", "_")
 	return mapSZDir .. mapname .. ".txt"
 
 end
@@ -119,12 +119,12 @@ hook.Add( "CleanUpMap", "RestoreSZsCleanup", function( _ )
 end )
 
 local function SaveMapDPM(mode)
-	local mapname = string.gsub(game.GetMap(), "[ ^ %a%d-_]", "_")
+	local mapname = string.gsub(game.GetMap(), "[^%a%d-_]", "_")
 	file.Write(mapDPMDir .. mapname .. ".txt", mode)
 end
 
 local function LoadMapDPM()
-	local mapname = string.gsub(game.GetMap(), "[ ^ %a%d-_]", "_")
+	local mapname = string.gsub(game.GetMap(), "[^%a%d-_]", "_")
 	return file.Read(mapDPMDir .. mapname .. ".txt", "DATA")
 end
 
@@ -706,5 +706,6 @@ do
 	end
 
 end
+
 
 

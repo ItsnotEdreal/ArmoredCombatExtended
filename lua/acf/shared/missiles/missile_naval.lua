@@ -27,7 +27,7 @@ ACF_defineGun("BGM-109 Tomahawk", {						-- id
 	gunclass         = "NAV",
 	rack             = "1xRK",						-- Which rack to spawn this missile on?
 	length           = 250 * 2.53, --Convert to ammocrate units
-	caliber          = 35.56,
+	caliber          = 51.8,
 	weight           = 1600,							-- Don't scale down the weight though!
 	year             = 1983,
 	modeldiameter    = 30, --Already in ammocrate units
@@ -111,7 +111,7 @@ ACF_defineGun("AGM-84 Harpoon", {						-- id
 	gunclass         = "NAV",
 	rack             = "1xRK",						-- Which rack to spawn this missile on?
 	length           = 150 * 2.53, --Convert to ammocrate units
-	caliber          = 34,
+	caliber          = 34.3,
 	weight           = 690,							-- Don't scale down the weight though!
 	year             = 1977,
 	modeldiameter    = 25, --Already in ammocrate units
@@ -196,7 +196,7 @@ ACF_defineGun("Storm Shadow ASM", {						-- id
 	gunclass         = "NAV",
 	rack             = "1xRK",						-- Which rack to spawn this missile on?
 	length           = 205 * 2.53, --Convert to ammocrate units
-	caliber          = 35.56,
+	caliber          = 48.0,
 	weight           = 1300,							-- Don't scale down the weight though!
 	year             = 2003,
 	modeldiameter    = 40, --Already in ammocrate units
@@ -361,9 +361,9 @@ ACF_defineGun("Black Shark Torp", {						-- id
 	effect           = "ACE_TorpedoMedium",
 	effectbooster    = "",
 	gunclass         = "NAV",
-	rack             = "1xRK",							-- Which rack to spawn this missile on?
+	rack             = "1xTorpedo",							-- Which rack to spawn this missile on?
 	length           = 250 * 2.53, --Convert to ammocrate units,
-	caliber          = 15, --Unfortunately caliber determines the minimum length even above the max length var. For now has to be set lower than 1:1
+	caliber          = 53.3,
 	weight           = 1200,								-- Don't scale down the weight though!
 	rofmod           = 0.3,
 	year             = 2015,
@@ -413,7 +413,12 @@ ACF_defineGun("Black Shark Torp", {						-- id
 	fuses	= {"Contact", "Overshoot", "Radio", "Optical", "Timed", "Altitude"},
 
 	racks	= {									-- a whitelist for racks that this missile can load into.
-					["1xRK"] = true,
+					["1xTorpedo"] = true,
+					["2xTorpedo"] = true,
+					["3xTorpedo"] = true,
+					["4xTorpedo"] = true,
+					["5xTorpedo"] = true,
+					["6xTorpedo"] = true,
 					["6xSmallTorpedo"] = true,
 					["5xSmallTorpedo"] = true,
 					["4xSmallTorpedo"] = true,
@@ -439,7 +444,7 @@ ACF_defineGun("G7a Torp", {						-- id
 	gunclass         = "NAV",
 	rack             = "1xRK",							-- Which rack to spawn this missile on?
 	length           = 250 * 2.53, --Convert to ammocrate units,
-	caliber          = 15, --Unfortunately caliber determines the minimum length even above the max length var. For now has to be set lower than 1:1
+	caliber          = 53.3,
 	weight           = 1538,								-- Don't scale down the weight though!
 	rofmod           = 0.3,
 	year             = 1934,
@@ -513,9 +518,9 @@ ACF_defineGun("Mk13 Torp", {						-- id
 	effect           = "ACE_TorpedoMedium",
 	effectbooster    = "",
 	gunclass         = "NAV",
-	rack             = "1xRK",							-- Which rack to spawn this missile on?
+	rack             = "1xTorpedo",							-- Which rack to spawn this missile on?
 	length           = 125 * 2.53, --Convert to ammocrate units,
-	caliber          = 15, --Unfortunately caliber determines the minimum length even above the max length var. For now has to be set lower than 1:1
+	caliber          = 57.0,
 	weight           = 1942,								-- Don't scale down the weight though!
 	rofmod           = 0.3,
 	year             = 2015,
@@ -565,7 +570,18 @@ ACF_defineGun("Mk13 Torp", {						-- id
 	fuses	= {"Contact", "Overshoot", "Radio", "Optical", "Timed", "Altitude"},
 
 	racks	= {									-- a whitelist for racks that this missile can load into.
-					["1xRK"] = true
+					["1xTorpedo"] = true,
+					["2xTorpedo"] = true,
+					["3xTorpedo"] = true,
+					["4xTorpedo"] = true,
+					["5xTorpedo"] = true,
+					["6xTorpedo"] = true,
+					["1xSmallTorpedo"] = true,
+					["2xSmallTorpedo"] = true,
+					["3xSmallTorpedo"] = true,
+					["4xSmallTorpedo"] = true,
+					["5xSmallTorpedo"] = true,
+					["6xSmallTorpedo"] = true
 				},
 
 	seekcone   = 25,								-- getting inside this cone will get you locked.  Divided by 2 ('seekcone = 40' means 80 degrees total.)	--was 25
@@ -585,7 +601,7 @@ ACF_defineGun("Mk54 Torp", {						-- id
 	gunclass         = "NAV",
 	rack             = "1xRK",							-- Which rack to spawn this missile on?
 	length           = 125 * 2.53, --Convert to ammocrate units,
-	caliber          = 7.5, --Unfortunately caliber determines the minimum length even above the max length var. For now has to be set lower than 1:1
+	caliber          = 32.4,
 	weight           = 1942,								-- Don't scale down the weight though!
 	rofmod           = 0.3,
 	year             = 2015,
@@ -662,7 +678,7 @@ ACF_defineGun("9M317ME SAM", {							-- id
 	gunclass         = "NAV",
 	rack             = "1xRK",							-- Which rack to spawn this missile on?
 	length           = 200 * 2.53, --Convert to ammocrate units
-	caliber          = 38.0,
+	caliber          = 38,								-- Real diameter (380 mm).
 	weight           = 1040,								-- Don't scale down the weight though!
 	year             = 1981,
 	modeldiameter    = 32,--Already in ammocrate units
@@ -676,8 +692,8 @@ ACF_defineGun("9M317ME SAM", {							-- id
 		reloaddelay			= 45.0,
 
 
-		maxlength			= 110,							-- Length of missile. Used for ammo properties.
-		propweight			= 40,							-- Motor mass - motor casing. Used for ammo properties.
+		maxlength			= 111.8,							-- Length of missile. Used for ammo properties.
+		propweight			= 15,							-- Motor mass - motor casing. Used for ammo properties.
 
 		armour				= 40,							-- Armour effectiveness of casing, in mm
 								--320

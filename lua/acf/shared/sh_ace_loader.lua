@@ -11,7 +11,7 @@ local RadarClasses      = {}
 local GunTable          = {}
 local RackTable         = {}
 local Radars            = {}
-local Tools			    =  {}
+local Tools             = {}
 
 local AmmoTable         = {}
 local LegacyAmmoTable   = {}
@@ -20,9 +20,11 @@ local EngineTable       = {}
 local GearboxTable      = {}
 local FuelTankTable     = {}
 local FuelTankSizeTable = {}
-local MuzzleFlashTable 	= {}
+local MuzzleFlashTable  = {}
 
 local MobilityTable     = {}
+local Crewseats         = {}
+local Extras            = {}
 
 local GSoundData        = {}
 local ModelData         = {}
@@ -76,6 +78,14 @@ local vheat_source_base = {
 	type   = "Tools"
 }
 
+local crewseat_base = {
+	type   = "Crewseats"
+}
+
+local extras_base = {
+	type   = "Extras"
+}
+
 -- add gui stuff to base classes if this is client
 -- more required stuff for the menu. Janky as fuck
 if CLIENT then
@@ -104,6 +114,12 @@ if CLIENT then
 
 	vheat_source_base.guicreate  = function( _, Table ) ACEVHeatSourceGUICreate( Table )	end or nil
 	vheat_source_base.guiupdate  = function() return end
+
+	crewseat_base.guicreate  = function( _, Table ) ACECrewseatGUICreate( Table ) end or nil
+	crewseat_base.guiupdate  = function() return end
+
+	extras_base.guicreate    = function( _, Table ) ACEExtrasGUICreate( Table ) end or nil
+	extras_base.guiupdate    = function() return end
 end
 
 -- some factory functions for defining ents
@@ -115,6 +131,20 @@ function ACF_defineGunClass( id, data )
 		data.id = id
 		GunClasses[ id ] = data
 	end
+end
+
+-- Crewseat definition
+function ACE_DefineCrewseat( id, data )
+	data.id = id
+	table.Inherit( data, crewseat_base )
+	Crewseats[ id ] = data
+end
+
+-- Extras definition (wind sensor, gforce meter, etc.)
+function ACE_DefineExtras( id, data )
+	data.id = id
+	table.Inherit( data, extras_base )
+	Extras[ id ] = data
 end
 
 -- Gun definition
@@ -135,6 +165,17 @@ end
 
 function ACE_DefineAmmoCrate( id, data )
 	data.id = id
+
+	-- Backwards/forwards compatibility for legacy typo key.
+	if data.Length == nil and data.Lenght ~= nil then
+		data.Length = data.Lenght
+	elseif data.Lenght == nil and data.Length ~= nil then
+		data.Lenght = data.Length
+	elseif data.Length ~= nil and data.Lenght ~= nil and data.Length ~= data.Lenght then
+		-- Prefer canonical key when both are present but disagree.
+		data.Lenght = data.Length
+	end
+
 	table.Inherit( data, ammo_base )
 	AmmoTable[ id ] = data
 end
@@ -341,7 +382,9 @@ do
 		"fueltanks",
 		"fuses",
 		"sounds",
-		"tools"
+		"tools",
+		"crewseats",
+		"extras"
 	}
 
 	for _, folder in ipairs(folders) do
@@ -372,6 +415,8 @@ ACF.Weapons.FuelTanks       = FuelTankTable
 ACF.Weapons.FuelTanksSize   = FuelTankSizeTable
 ACF.Weapons.Radars          = Radars
 ACF.Weapons.Tools           = Tools
+ACF.Weapons.Crewseats       = Crewseats
+ACF.Weapons.Extras          = Extras
 ACE.MuzzleFlashes           = MuzzleFlashTable
 
 --Small reminder of Mobility table. Still being used in stuff like starfall/e2. This can change

@@ -84,6 +84,8 @@ function ENT:Initialize()
 
 	self.IgnitionDelay = 0
 
+	self.UnderwaterThrust = self.UnderwaterThrust or 1
+	self.BoostUnderwater = self.BoostUnderwater or 1
 	self.WaterZHeight = -1 --If set to >=0 it will indicate it's a torpedo.
 	self.UpdateFX = true
 
@@ -468,6 +470,14 @@ function ENT:Think()
 			self.CanDetonate = true
 		end
 
+		--Detonation by launcher scuttle command
+		if self.Launcher.ScuttleMissiles then
+			self.CanDetonate = true
+			self:Detonate()
+			return
+		end
+
+
 		--Detonation by fuse, if available
 
 		if self.CanDetonate == true then
@@ -484,7 +494,7 @@ function ENT:Think()
 			if tr.Hit then --and (not tr.HitSky) and util.IsInWorld( tr.HitPos ) -- Removed passing outside the world
 
 				if tr.Entity:IsValid() then
-					local HitCont = tr.Entity:GetContraption() or {}
+					local HitCont = tr.Entity:CFW_GetContraption() or {}
 					if HitCont == self.Contraption then
 						Exit = true
 					end
@@ -614,7 +624,7 @@ function ENT:Detonate()
 	self.Exploded = true
 	ACF_ActiveMissiles[self] = nil
 
-	local HEWeight = self.Bulletdata2.BoomFillerMass or self.Bulletdata2.FillerMass or 1
+	local HEWeight = self.Bulletdata2.BoomFillerMass or self.Bulletdata2.FillerMass or 0
 	local Radius = HEWeight ^ 0.33 * 8 * 39.37
 
 --	if not IsValid(self.Launcher) then return end
@@ -713,9 +723,22 @@ do
 			self.ActivationTime = 0
 			self.Lifetime = 0 --Instantly scuttle as soon as can execute.
 
-			self.MissileVelocityMul = self.MissileVelocityMul * 0.05
-			self.Bulletdata2.SlugMV = self.Bulletdata2.SlugMV * 0.1
-			self.Bulletdata2.SlugMV2 = self.Bulletdata2.SlugMV * 0.1
+			self.MissileVelocityMul = (tonumber(self.MissileVelocityMul) or 1) * 0.05
+
+			local bdata = self.Bulletdata2
+			if istable(bdata) then
+				if tonumber(bdata.SlugMV) then
+					bdata.SlugMV = bdata.SlugMV * 0.1
+				end
+
+				if tonumber(bdata.SlugMV2) then
+					bdata.SlugMV2 = bdata.SlugMV2 * 0.1
+				end
+
+				if tonumber(bdata.MuzzleVel) then
+					bdata.MuzzleVel = bdata.MuzzleVel * 0.1
+				end
+			end
 
 			return { Damage = 0, Overkill = 0, Loss = 0, Kill = false }
 
